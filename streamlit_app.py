@@ -29,7 +29,6 @@ tab_team, tab_rankings, tab_trends, tab_about = st.tabs(
     ["Team View", "Rankings", "Trends", "About"]
 )
 
-
 # =========================
 # TAB 1 — TEAM VIEW
 # =========================
@@ -47,7 +46,6 @@ with tab_team:
 
     st.metric("Avg Seasonal Margin", f"{team_data['avg_season_margin']:.2f}")
     st.metric("World Cup Titles", int(team_data["world_cup_titles"]))
-
 
 # =========================
 # TAB 2 — RANKINGS
@@ -85,12 +83,18 @@ with tab_rankings:
 with tab_trends:
     st.subheader("Performance Trends Over Time")
 
-    # Team multiselect
+    # Team selector
     available_teams = sorted(year_df["team"].unique())
     selected_teams = st.multiselect(
         "Compare teams:",
         options=available_teams,
         default=["New Zealand", "South Africa"]
+    )
+
+    # Metric selector
+    metric_choice = st.radio(
+        "Choose a metric to visualize:",
+        ["Seasonal Point Margin", "Seasonal Win Percentage"]
     )
 
     # Year slider
@@ -107,34 +111,46 @@ with tab_trends:
     if not selected_teams:
         st.info("Select at least one team to see trends.")
     else:
-        # Filter for selected teams & year range
+        # Filter for teams & year
         subset = year_df[
             (year_df["team"].isin(selected_teams)) &
             (year_df["year"] >= year_range[0]) &
             (year_df["year"] <= year_range[1])
         ].copy().sort_values(["team", "year"])
 
+        # Choose which metric to plot
         fig, ax = plt.subplots()
-        for team_name in selected_teams:
-            team_data = subset[subset["team"] == team_name]
-            ax.plot(
-                team_data["year"],
-                team_data["margin_per_match_year"],
-                label=team_name
-            )
+
+        if metric_choice == "Seasonal Point Margin":
+            for t in selected_teams:
+                team_data = subset[subset["team"] == t]
+                ax.plot(
+                    team_data["year"],
+                    team_data["margin_per_match_year"],
+                    label=t
+                )
+            ax.set_ylabel("Margin per Match (Season)")
+
+        else:  # Win %
+            for t in selected_teams:
+                team_data = subset[subset["team"] == t]
+                ax.plot(
+                    team_data["year"],
+                    team_data["win_pct_year"],
+                    label=t
+                )
+            ax.set_ylabel("Win Percentage (%)")
 
         ax.axhline(0, linestyle="--", linewidth=1)
-        ax.set_title("Seasonal Average Point Margin Over Time")
+        ax.set_title(f"{metric_choice} Over Time")
         ax.set_xlabel("Year")
-        ax.set_ylabel("Average Margin per Match")
         ax.legend()
-
         st.pyplot(fig)
 
         st.markdown(
             """
-This chart shows how scoring margin has changed year by year.
-Positive values mean the team scored more than they conceded on average that season.
+This chart shows how teams have performed year-by-year.
+Choose between point margin or win percentage to explore dominance trends.
 """
         )
 
@@ -149,4 +165,5 @@ This dashboard summarizes international rugby performance across multiple metric
 including win percentage, scoring margin, defensive strength, and championship success.
 It is part of a portfolio demonstrating data analysis and web app deployment using Python and Streamlit.
 """)
+
 
