@@ -11,6 +11,8 @@ st.set_page_config(
 
 # Load data
 df = pd.read_csv("team_stats.csv", index_col=0)
+year_df = pd.read_csv("team_year_stats.csv")
+
 
 # Title and intro
 st.title("🏉 Rugby Dominance Dashboard")
@@ -23,9 +25,10 @@ defensive strength, and Rugby World Cup titles.
 team = st.sidebar.selectbox("Select a team:", df.index)
 
 # ----- TABS -----
-tab_team, tab_rankings, tab_about = st.tabs(
-    ["Team View", "Rankings", "About"]
+tab_team, tab_rankings, tab_trends, tab_about = st.tabs(
+    ["Team View", "Rankings", "Trends", "About"]
 )
+
 
 # =========================
 # TAB 1 — TEAM VIEW
@@ -75,10 +78,69 @@ with tab_rankings:
     st.write(
         f"Most dominant teams overall: **{dom1}**, **{dom2}**, **{dom3}**."
     )
+    
+# =========================
+# TAB 3 — TRENDS
+# =========================
+with tab_trends:
+    st.subheader("Performance Trends Over Time")
+
+    # Team multiselect
+    available_teams = sorted(year_df["team"].unique())
+    selected_teams = st.multiselect(
+        "Compare teams:",
+        options=available_teams,
+        default=["New Zealand", "South Africa"]
+    )
+
+    # Year slider
+    min_year = int(year_df["year"].min())
+    max_year = int(year_df["year"].max())
+    year_range = st.slider(
+        "Year range:",
+        min_value=min_year,
+        max_value=max_year,
+        value=(min_year, max_year),
+        step=1,
+    )
+
+    if not selected_teams:
+        st.info("Select at least one team to see trends.")
+    else:
+        # Filter for selected teams & year range
+        subset = year_df[
+            (year_df["team"].isin(selected_teams)) &
+            (year_df["year"] >= year_range[0]) &
+            (year_df["year"] <= year_range[1])
+        ].copy().sort_values(["team", "year"])
+
+        fig, ax = plt.subplots()
+        for team_name in selected_teams:
+            team_data = subset[subset["team"] == team_name]
+            ax.plot(
+                team_data["year"],
+                team_data["margin_per_match_year"],
+                label=team_name
+            )
+
+        ax.axhline(0, linestyle="--", linewidth=1)
+        ax.set_title("Seasonal Average Point Margin Over Time")
+        ax.set_xlabel("Year")
+        ax.set_ylabel("Average Margin per Match")
+        ax.legend()
+
+        st.pyplot(fig)
+
+        st.markdown(
+            """
+This chart shows how scoring margin has changed year by year.
+Positive values mean the team scored more than they conceded on average that season.
+"""
+        )
 
 
 # =========================
-# TAB 3 — ABOUT
+# TAB 4 — ABOUT
 # =========================
 with tab_about:
     st.subheader("About This Project")
@@ -87,3 +149,4 @@ This dashboard summarizes international rugby performance across multiple metric
 including win percentage, scoring margin, defensive strength, and championship success.
 It is part of a portfolio demonstrating data analysis and web app deployment using Python and Streamlit.
 """)
+
