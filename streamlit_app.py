@@ -171,52 +171,33 @@ Choose between point margin or win percentage to explore dominance trends.
 """
         )
         
+# =========================
+# TAB 4 — WORLD CUPS
+# =========================
 with tab_worldcups:
-    st.subheader("Rugby World Cup Timeline (1987–2023)")
+    st.subheader("Rugby World Cup Winners (1987–2023)")
 
-    st.write("A clean timeline showing each Rugby World Cup winner:")
+    # Create a clean horizontal timeline-like table
+    timeline_df = wcs.copy()
+    timeline_df[" "] = "→"  # arrow column for readability
 
-    # Assign colors to teams
-    team_colors = {
-        "New Zealand": "#000000",   # black
-        "South Africa": "#006400",  # green
-        "Australia": "#ffcc00",     # gold
-        "England": "#cc0000",       # red
-    }
-
-    fig, ax = plt.subplots(figsize=(10, 4))
-
-    # Plot one point per tournament
-    ax.scatter(
-        wcs["year"],
-        [1] * len(wcs),                  # all points on a flat horizontal line
-        s=300,
-        color=[team_colors[t] for t in wcs["winner"]],
+    st.dataframe(
+        timeline_df[["year", " ", "winner"]],
+        hide_index=True,
+        use_container_width=True,
     )
-
-    # Add text labels above each dot
-    for i, row in wcs.iterrows():
-        ax.text(
-            row["year"],
-            1.05,
-            row["winner"],
-            ha='center',
-            va='bottom',
-            fontsize=9,
-            color=team_colors[row["winner"]],
-            fontweight="bold"
-        )
-
-    ax.set_yticks([])  # remove the y-axis
-    ax.set_xlabel("Year")
-    ax.set_title("World Cup Winners by Year")
-    ax.grid(axis='x', linestyle='--', alpha=0.4)
-
-    st.pyplot(fig)
 
     st.markdown("---")
 
     st.subheader("Total World Cup Titles")
+
+    # Assign colors to teams
+    team_colors = {
+        "New Zealand": "#000000",
+        "South Africa": "#006400",
+        "Australia": "#ffcc00",
+        "England": "#cc0000",
+    }
 
     titles = wcs["winner"].value_counts()
 
@@ -232,12 +213,6 @@ with tab_worldcups:
     plt.xticks(rotation=45)
     st.pyplot(fig2)
 
-    st.markdown("---")
-
-    st.subheader("World Cup Winners Table")
-    st.dataframe(wcs)
-
-
 # =========================
 # TAB 5 — ABOUT
 # =========================
@@ -248,6 +223,7 @@ This dashboard summarizes international rugby performance across multiple metric
 including win percentage, scoring margin, defensive strength, and championship success.
 It is part of a portfolio demonstrating data analysis and web app deployment using Python and Streamlit.
 """)
+
 
 
 
