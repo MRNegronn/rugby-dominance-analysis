@@ -42,8 +42,8 @@ defensive strength, and Rugby World Cup titles.
 team = st.sidebar.selectbox("Select a team:", df.index)
 
 # ----- TABS -----
-tab_team, tab_rankings, tab_trends, tab_about = st.tabs(
-    ["Team View", "Rankings", "Trends", "About"]
+tab_team, tab_rankings, tab_trends, tab_worldcups, tab_about = st.tabs(
+    ["Team View", "Rankings", "Trends", "World Cups", "About"]
 )
 
 # =========================
@@ -170,10 +170,46 @@ This chart shows how teams have performed year-by-year.
 Choose between point margin or win percentage to explore dominance trends.
 """
         )
+        
+# =========================
+# TAB 4 — WORLD CUPS
+# =========================
+with tab_worldcups:
+    st.subheader("Rugby World Cup Timeline (1987–2023)")
 
+    st.write("This chart shows each Rugby World Cup and the nation that won it.")
+
+    fig, ax = plt.subplots()
+    ax.scatter(wcs["year"], wcs["winner"], s=200)
+
+    for i, row in wcs.iterrows():
+        ax.text(row["year"], row["winner"], row["winner"], fontsize=9, ha='left', va='center')
+
+    ax.set_xlabel("Year")
+    ax.set_ylabel("Winner")
+    ax.set_title("World Cup Winners by Year")
+    st.pyplot(fig)
+
+    st.markdown("---")
+
+    st.subheader("Total World Cup Titles by Team")
+    titles = wcs["winner"].value_counts()
+
+    fig2, ax2 = plt.subplots()
+    ax2.bar(titles.index, titles.values)
+    ax2.set_xlabel("Team")
+    ax2.set_ylabel("Titles")
+    ax2.set_title("Total Rugby World Cup Titles (1987–2023)")
+    plt.xticks(rotation=45)
+    st.pyplot(fig2)
+
+    st.markdown("---")
+
+    st.subheader("Full Winners Table")
+    st.dataframe(wcs)
 
 # =========================
-# TAB 4 — ABOUT
+# TAB 5 — ABOUT
 # =========================
 with tab_about:
     st.subheader("About This Project")
@@ -182,6 +218,7 @@ This dashboard summarizes international rugby performance across multiple metric
 including win percentage, scoring margin, defensive strength, and championship success.
 It is part of a portfolio demonstrating data analysis and web app deployment using Python and Streamlit.
 """)
+
 
 
 
