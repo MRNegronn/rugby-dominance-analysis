@@ -186,7 +186,7 @@ with tab_worldcups:
     # Build a markdown table (no index column ever)
     table_md = "| Year | Winner |\n|------|--------|\n"
     for _, row in timeline_df.iterrows():
-    table_md += f"| {row['Year']} | {row['Winner']} |\n"
+        table_md += f"| {row['Year']} | {row['Winner']} |\n"
 
     st.markdown(table_md)
 
@@ -224,6 +224,7 @@ This dashboard summarizes international rugby performance across multiple metric
 including win percentage, scoring margin, defensive strength, and championship success.
 It is part of a portfolio demonstrating data analysis and web app deployment using Python and Streamlit.
 """)
+
 
 
 
