@@ -177,12 +177,11 @@ Choose between point margin or win percentage to explore dominance trends.
 with tab_worldcups:
     st.subheader("Rugby World Cup Winners (1987–2023)")
 
-    # Create a clean horizontal timeline-like table
-    timeline_df = wcs.copy()
-    timeline_df[" "] = "→"  # arrow column for readability
+    # Clean timeline (2-column table)
+    timeline_df = wcs[["year", "winner"]].copy()
 
     st.dataframe(
-        timeline_df[["year", " ", "winner"]],
+        timeline_df,
         hide_index=True,
         use_container_width=True,
     )
@@ -191,7 +190,6 @@ with tab_worldcups:
 
     st.subheader("Total World Cup Titles")
 
-    # Assign colors to teams
     team_colors = {
         "New Zealand": "#000000",
         "South Africa": "#006400",
@@ -207,10 +205,12 @@ with tab_worldcups:
         titles.values,
         color=[team_colors[t] for t in titles.index]
     )
+
     ax2.set_xlabel("Team")
     ax2.set_ylabel("Titles")
     ax2.set_title("Total Rugby World Cup Titles (1987–2023)")
     plt.xticks(rotation=45)
+
     st.pyplot(fig2)
 
 # =========================
@@ -223,6 +223,7 @@ This dashboard summarizes international rugby performance across multiple metric
 including win percentage, scoring margin, defensive strength, and championship success.
 It is part of a portfolio demonstrating data analysis and web app deployment using Python and Streamlit.
 """)
+
 
 
 
