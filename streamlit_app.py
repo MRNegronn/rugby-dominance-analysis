@@ -176,16 +176,20 @@ Choose between point margin or win percentage to explore dominance trends.
 # =========================
 with tab_worldcups:
     st.subheader("Rugby World Cup Winners (1987–2023)")
-
-    # Clean formatted timeline table
+    
+    # --- Clean formatted timeline table ---
     timeline_df = wcs[["year", "winner"]].copy()
-    timeline_df.columns = ["Year", "Winner"]  # Capitalized headers
+    timeline_df.columns = ["Year", "Winner"]
 
-    # Convert Year to string so it left-aligns
+    # Left-align the Year column
     timeline_df["Year"] = timeline_df["Year"].astype(str)
 
-    # Display as a compact table (not full width)
+    # Remove index so it doesn’t display in the table
+    timeline_df = timeline_df.reset_index(drop=True)
+
+    # Display compact clean table (no index, no full-width)
     st.table(timeline_df)
+
 
     st.markdown("---")
 
@@ -222,6 +226,7 @@ This dashboard summarizes international rugby performance across multiple metric
 including win percentage, scoring margin, defensive strength, and championship success.
 It is part of a portfolio demonstrating data analysis and web app deployment using Python and Streamlit.
 """)
+
 
 
 
