@@ -2,6 +2,23 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 
+# World Cup Winners Data (1987–2023)
+world_cups = [
+    {"year": 1987, "winner": "New Zealand"},
+    {"year": 1991, "winner": "Australia"},
+    {"year": 1995, "winner": "South Africa"},
+    {"year": 1999, "winner": "Australia"},
+    {"year": 2003, "winner": "England"},
+    {"year": 2007, "winner": "South Africa"},
+    {"year": 2011, "winner": "New Zealand"},
+    {"year": 2015, "winner": "New Zealand"},
+    {"year": 2019, "winner": "South Africa"},
+    {"year": 2023, "winner": "South Africa"},
+]
+
+import pandas as pd
+wcs = pd.DataFrame(world_cups)
+
 st.set_page_config(
     page_title="Rugby Dominance Dashboard",
     page_icon="🏉",
@@ -165,5 +182,6 @@ This dashboard summarizes international rugby performance across multiple metric
 including win percentage, scoring margin, defensive strength, and championship success.
 It is part of a portfolio demonstrating data analysis and web app deployment using Python and Streamlit.
 """)
+
 
 
