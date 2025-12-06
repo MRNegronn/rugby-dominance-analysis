@@ -211,7 +211,6 @@ with tab_worldcups:
     plt.xticks(rotation=45)
     st.pyplot(fig2)
 
-
 # =========================
 # TAB 5 — ABOUT
 # =========================
@@ -222,6 +221,7 @@ This dashboard summarizes international rugby performance across multiple metric
 including win percentage, scoring margin, defensive strength, and championship success.
 It is part of a portfolio demonstrating data analysis and web app deployment using Python and Streamlit.
 """)
+
 
 
 
