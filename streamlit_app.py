@@ -59,11 +59,12 @@ world_cups = [
     {"year": 2003, "winner": "England"},
     {"year": 2007, "winner": "South Africa"},
     {"year": 2011, "winner": "New Zealand"},
-    {"year": 2015", "winner": "New Zealand"},
+    {"year": 2015, "winner": "New Zealand"},   # ← fixed line
     {"year": 2019, "winner": "South Africa"},
     {"year": 2023, "winner": "South Africa"},
 ]
 wcs = pd.DataFrame(world_cups)
+
 
 
 # -------- HEADER --------
@@ -220,4 +221,5 @@ with tab_about:
     scoring trends, and Rugby World Cup results.
     Built using Python, Streamlit, and modern data visualization techniques.
     """)
+
 
