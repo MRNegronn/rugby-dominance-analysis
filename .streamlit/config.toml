@@ -1,0 +1,7 @@
+[theme]
+base="dark"
+primaryColor="#e10600"        # Rugby / ESPN red highlight
+backgroundColor="#0e1117"     # Dark sports panel
+secondaryBackgroundColor="#161a23"
+textColor="#ffffff"
+font="sans serif"
