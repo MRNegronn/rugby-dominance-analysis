@@ -180,13 +180,16 @@ with tab_worldcups:
     # --- Clean formatted timeline table ---
     timeline_df = wcs[["year", "winner"]].copy()
     timeline_df.columns = ["Year", "Winner"]
-
     timeline_df["Year"] = timeline_df["Year"].astype(str)
     timeline_df = timeline_df.reset_index(drop=True)
 
-    st.table(timeline_df)
+    # Build a markdown table (no index column ever)
+    table_md = "| Year | Winner |\n|------|--------|\n"
+    for _, row in timeline_df.iterrows():
+    table_md += f"| {row['Year']} | {row['Winner']} |\n"
 
-    st.markdown("---")
+    st.markdown(table_md)
+
 
     st.subheader("Total World Cup Titles")
 
@@ -221,6 +224,7 @@ This dashboard summarizes international rugby performance across multiple metric
 including win percentage, scoring margin, defensive strength, and championship success.
 It is part of a portfolio demonstrating data analysis and web app deployment using Python and Streamlit.
 """)
+
 
 
 
