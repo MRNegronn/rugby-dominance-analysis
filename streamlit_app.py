@@ -1,395 +1,489 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
+import numpy as np
+import plotly.express as px
 
-# -------- PAGE CONFIG --------
+# ---------------------------------------------------------
+# Page config
+# ---------------------------------------------------------
 st.set_page_config(
-    page_title="Rugby Analytics Dashboard",
-    page_icon="🏉",
-    layout="wide",
+    page_title="Rugby Performance Analytics Dashboard",
+    layout="wide"
 )
 
-# -------- ESPN-STYLE CUSTOM CSS --------
-st.markdown(
+# ---------------------------------------------------------
+# Data loading & preparation
+# ---------------------------------------------------------
+@st.cache_data
+def load_match_data(path: str = "data/rugby_matches.csv") -> pd.DataFrame:
     """
-    <style>
-    /* Tabs styling */
-    .stTabs [role="tab"] {
-        font-size: 1.05rem;
-        padding: 10px 18px;
-        font-weight: 600;
-        border-bottom: 3px solid transparent;
+    Try to load a matches CSV.
+    If not found, fall back to a small demo dataset so the app still runs.
+    Expected columns if using your own data:
+      - date (or year)
+      - team
+      - opponent
+      - team_score
+      - opponent_score
+      - tournament
+      - venue
+    """
+    try:
+        df = pd.read_csv(path)
+    except Exception:
+        # Fallback demo dataset
+        data = [
+            {"date": "2015-10-31", "team": "New Zealand", "opponent": "Australia",
+             "team_score": 34, "opponent_score": 17, "tournament": "Rugby World Cup",
+             "venue": "Twickenham"},
+            {"date": "2019-11-02", "team": "South Africa", "opponent": "England",
+             "team_score": 32, "opponent_score": 12, "tournament": "Rugby World Cup",
+             "venue": "Yokohama"},
+            {"date": "2023-10-28", "team": "South Africa", "opponent": "New Zealand",
+             "team_score": 12, "opponent_score": 11, "tournament": "Rugby World Cup",
+             "venue": "Paris"},
+            {"date": "2022-07-09", "team": "Ireland", "opponent": "New Zealand",
+             "team_score": 23, "opponent_score": 12, "tournament": "Test Series",
+             "venue": "Dunedin"},
+            {"date": "2022-07-16", "team": "Ireland", "opponent": "New Zealand",
+             "team_score": 32, "opponent_score": 22, "tournament": "Test Series",
+             "venue": "Wellington"},
+        ]
+        df = pd.DataFrame(data)
+
+    # Basic derived columns
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"])
+        df["year"] = df["date"].dt.year
+    elif "year" not in df.columns:
+        # If the user only has a year column, that's fine
+        df["year"] = pd.to_numeric(df["year"], errors="coerce")
+
+    if "team_score" in df.columns and "opponent_score" in df.columns:
+        df["margin"] = df["team_score"] - df["opponent_score"]
+        conditions = [
+            df["team_score"] > df["opponent_score"],
+            df["team_score"] < df["opponent_score"],
+            df["team_score"] == df["opponent_score"]
+        ]
+        choices = ["Win", "Loss", "Draw"]
+        df["result"] = np.select(conditions, choices, default="Unknown")
+
+    # Normalize some expected columns
+    for col in ["tournament", "venue", "team", "opponent"]:
+        if col in df.columns:
+            df[col] = df[col].astype(str)
+
+    return df
+
+
+df = load_match_data()
+
+# Precomputed list of teams for selectors
+teams = sorted(pd.unique(df[["team", "opponent"]].values.ravel()))
+
+
+# ---------------------------------------------------------
+# Helper functions
+# ---------------------------------------------------------
+def team_summary(df_team: pd.DataFrame) -> dict:
+    """Compute core metrics for one team."""
+    total_matches = len(df_team)
+    wins = (df_team["result"] == "Win").sum()
+    losses = (df_team["result"] == "Loss").sum()
+    draws = (df_team["result"] == "Draw").sum()
+
+    win_pct = wins / total_matches * 100 if total_matches > 0 else 0.0
+    avg_margin = df_team["margin"].mean() if "margin" in df_team.columns else 0.0
+    avg_points_for = df_team["team_score"].mean() if "team_score" in df_team.columns else 0.0
+    avg_points_against = df_team["opponent_score"].mean() if "opponent_score" in df_team.columns else 0.0
+
+    return {
+        "matches": total_matches,
+        "wins": wins,
+        "losses": losses,
+        "draws": draws,
+        "win_pct": win_pct,
+        "avg_margin": avg_margin,
+        "avg_for": avg_points_for,
+        "avg_against": avg_points_against,
     }
 
-    .stTabs [aria-selected="true"] {
-        color: #e10600 !important;
-        border-bottom: 3px solid #e10600 !important;
-    }
 
-    /* Headings stronger */
-    h1, h2, h3, h4 {
-        font-weight: 700 !important;
-        letter-spacing: 0.5px !important;
-    }
-
-    /* Metric card container */
-    .metric-card {
-        background-color: #161a23;
-        padding: 14px;
-        border-radius: 10px;
-        box-shadow: 0px 0px 10px rgba(255, 255, 255, 0.06);
-        margin-bottom: 12px;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-# -------- TEAM LOGOS & COLORS --------
-team_logos = {
-    "New Zealand": "https://upload.wikimedia.org/wikipedia/en/thumb/8/81/All_Blacks_logo.svg/512px-All_Blacks_logo.svg.png",
-    "South Africa": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e4/Springboks_logo.svg/512px-Springboks_logo.svg.png",
-    "Australia": "https://upload.wikimedia.org/wikipedia/en/thumb/3/3e/Wallabies_logo.svg/512px-Wallabies_logo.svg.png",
-    "England": "https://upload.wikimedia.org/wikipedia/en/thumb/0/05/England_rugby_union_rose.svg/512px-England_rugby_union_rose.svg.png",
-}
-
-team_colors = {
-    "New Zealand": "#ffffff",   # white on dark
-    "South Africa": "#00b140",  # green
-    "Australia": "#f2a900",     # gold
-    "England": "#cc0000",       # red
-}
-
-# -------- HELPER: CHART STYLE --------
-def style_chart(ax):
-    """Apply consistent ESPN-style formatting to matplotlib axes."""
-    ax.set_facecolor("#161a23")
-    ax.grid(color="gray", linestyle="--", linewidth=0.3, alpha=0.35)
-    for label in ax.get_xticklabels() + ax.get_yticklabels():
-        label.set_color("white")
-    ax.title.set_color("white")
-    ax.xaxis.label.set_color("white")
-    ax.yaxis.label.set_color("white")
+def head_to_head(df_all: pd.DataFrame, team_a: str, team_b: str) -> pd.DataFrame:
+    """Filter matches where team_a plays team_b (either home or away)."""
+    mask = (
+        ((df_all["team"] == team_a) & (df_all["opponent"] == team_b)) |
+        ((df_all["team"] == team_b) & (df_all["opponent"] == team_a))
+    )
+    return df_all[mask].copy()
 
 
-# -------- LOAD DATA --------
-df = pd.read_csv("team_stats.csv", index_col=0)
-year_df = pd.read_csv("team_year_stats.csv")
+def aggregate_rankings(df_all: pd.DataFrame) -> pd.DataFrame:
+    """Create a simple ranking table by win percentage & average margin."""
+    if "result" not in df_all.columns:
+        return pd.DataFrame()
 
-# World Cup Winners dataset
-world_cups = [
-    {"year": 1987, "winner": "New Zealand"},
-    {"year": 1991, "winner": "Australia"},
-    {"year": 1995, "winner": "South Africa"},
-    {"year": 1999, "winner": "Australia"},
-    {"year": 2003, "winner": "England"},
-    {"year": 2007, "winner": "South Africa"},
-    {"year": 2011, "winner": "New Zealand"},
-    {"year": 2015, "winner": "New Zealand"},
-    {"year": 2019, "winner": "South Africa"},
-    {"year": 2023, "winner": "South Africa"},
+    grouped = df_all.groupby("team", as_index=False).agg(
+        matches=("result", "count"),
+        wins=("result", lambda x: (x == "Win").sum()),
+        losses=("result", lambda x: (x == "Loss").sum()),
+        draws=("result", lambda x: (x == "Draw").sum()),
+        avg_margin=("margin", "mean"),
+    )
+    grouped["win_pct"] = grouped["wins"] / grouped["matches"] * 100
+    ranked = grouped.sort_values(
+        by=["win_pct", "avg_margin", "matches"],
+        ascending=[False, False, False]
+    ).reset_index(drop=True)
+    ranked["rank"] = ranked.index + 1
+    cols = ["rank", "team", "matches", "wins", "losses", "draws", "win_pct", "avg_margin"]
+    return ranked[cols]
+
+
+# Static World Cup history for the World Cups tab
+WORLD_CUPS = [
+    {"year": 1987, "host": "New Zealand & Australia", "winner": "New Zealand", "runner_up": "France"},
+    {"year": 1991, "host": "UK, France & Ireland", "winner": "Australia", "runner_up": "England"},
+    {"year": 1995, "host": "South Africa", "winner": "South Africa", "runner_up": "New Zealand"},
+    {"year": 1999, "host": "Wales", "winner": "Australia", "runner_up": "France"},
+    {"year": 2003, "host": "Australia", "winner": "England", "runner_up": "Australia"},
+    {"year": 2007, "host": "France", "winner": "South Africa", "runner_up": "England"},
+    {"year": 2011, "host": "New Zealand", "winner": "New Zealand", "runner_up": "France"},
+    {"year": 2015, "host": "England", "winner": "New Zealand", "runner_up": "Australia"},
+    {"year": 2019, "host": "Japan", "winner": "South Africa", "runner_up": "England"},
+    {"year": 2023, "host": "France", "winner": "South Africa", "runner_up": "New Zealand"},
 ]
-wcs = pd.DataFrame(world_cups)
+wc_df = pd.DataFrame(WORLD_CUPS)
 
-# -------- HEADER --------
-st.markdown(
-    """
-    ### <span style="color:#e10600;font-weight:700;">
-    Rugby Performance Analytics Dashboard
-    </span>
-    """,
-    unsafe_allow_html=True,
-)
+# ---------------------------------------------------------
+# Layout – main title and tabs
+# ---------------------------------------------------------
+st.title("Rugby Performance Analytics Dashboard")
 
-# -------- SIDEBAR --------
-team = st.sidebar.selectbox("Select a team:", df.index)
-
-# -------- TABS --------
-tab_team, tab_rankings, tab_trends, tab_compare, tab_worldcups, tab_about = st.tabs(
+tab_team, tab_rankings, tab_trends, tab_compare, tab_wc, tab_about = st.tabs(
     ["Team View", "Rankings", "Trends", "Compare", "World Cups", "About"]
 )
 
-
-# ==========================
-# TAB 1 — TEAM VIEW
-# ==========================
+# ---------------------------------------------------------
+# TAB: Team View
+# ---------------------------------------------------------
 with tab_team:
-    st.subheader(f"Team Snapshot: {team}")
-    team_data = df.loc[team]
+    st.header("Team View")
 
-    # Logo
-    logo_url = team_logos.get(team)
-    if logo_url:
-        st.image(logo_url, width=160)
-
-    # Metric cards
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns([2, 3])
 
     with col1:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric("Win %", f"{team_data['win_pct']:.1f}%")
-        st.markdown("</div>", unsafe_allow_html=True)
+        selected_team = st.selectbox("Select a team", teams, key="team_view_team")
+        team_df = df[df["team"] == selected_team].copy()
+
+        if team_df.empty:
+            st.warning("No data found for this team.")
+        else:
+            summary = team_summary(team_df)
+
+            st.subheader(f"{selected_team} – Summary")
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Matches", summary["matches"])
+            c2.metric("Win %", f"{summary['win_pct']:.1f}%")
+            c3.metric("Avg Margin", f"{summary['avg_margin']:.2f}")
+
+            c4, c5, c6 = st.columns(3)
+            c4.metric("Avg Points For", f"{summary['avg_for']:.1f}")
+            c5.metric("Avg Points Against", f"{summary['avg_against']:.1f}")
+            c6.metric("Draws", summary["draws"])
 
     with col2:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric("Avg Margin per Match", f"{team_data['margin_per_match']:.2f}")
-        st.markdown("</div>", unsafe_allow_html=True)
+        if not team_df.empty:
+            st.subheader("Results Over Time")
 
-    with col3:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric(
-            "Defense (Pts Allowed/Match)",
-            f"{team_data['points_allowed_per_match']:.2f}",
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    col4, col5 = st.columns(2)
-    with col4:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric("Avg Seasonal Margin", f"{team_data['avg_season_margin']:.2f}")
-        st.markdown("</div>", unsafe_allow_html=True)
-    with col5:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric("World Cup Titles", int(team_data["world_cup_titles"]))
-        st.markdown("</div>", unsafe_allow_html=True)
-
-
-# ==========================
-# TAB 2 — RANKINGS
-# ==========================
-with tab_rankings:
-    st.subheader("Rankings Overview")
-
-    # Top by Win %
-    st.markdown("#### Top 10 Teams by Win Percentage")
-    top10_win = df.sort_values("win_pct", ascending=False).head(10)
-    fig1, ax1 = plt.subplots(figsize=(8, 4))
-    ax1.bar(
-        top10_win.index,
-        top10_win["win_pct"],
-        color=[team_colors.get(t, "#e10600") for t in top10_win.index],
-    )
-    ax1.set_ylabel("Win %")
-    ax1.set_title("Win Percentage (Top 10)")
-    plt.xticks(rotation=45, ha="right")
-    style_chart(ax1)
-    st.pyplot(fig1)
-
-    st.markdown("---")
-
-    # Top by Dominance Score
-    st.markdown("#### Top 10 Teams by Dominance Score")
-    top10_dom = df.sort_values("dominance_score", ascending=False).head(10)
-    fig2, ax2 = plt.subplots(figsize=(8, 4))
-    ax2.bar(
-        top10_dom.index,
-        top10_dom["dominance_score"],
-        color=[team_colors.get(t, "#e10600") for t in top10_dom.index],
-    )
-    ax2.set_ylabel("Dominance Score")
-    ax2.set_title("Dominance Score (Top 10)")
-    plt.xticks(rotation=45, ha="right")
-    style_chart(ax2)
-    st.pyplot(fig2)
-
-
-# ==========================
-# TAB 3 — TRENDS
-# ==========================
-with tab_trends:
-    st.subheader("Performance Trends Over Time")
-
-    available_teams = sorted(year_df["team"].unique())
-    selected_teams = st.multiselect(
-        "Compare teams:", options=available_teams, default=["New Zealand", "South Africa"]
-    )
-
-    metric_choice = st.radio(
-        "Choose a metric to visualize:",
-        ["Seasonal Point Margin", "Seasonal Win Percentage"],
-    )
-
-    min_year = int(year_df["year"].min())
-    max_year = int(year_df["year"].max())
-    year_range = st.slider(
-        "Year range:",
-        min_value=min_year,
-        max_value=max_year,
-        value=(min_year, max_year),
-        step=1,
-    )
-
-    if not selected_teams:
-        st.info("Select at least one team to see trends.")
-    else:
-        subset = year_df[
-            (year_df["team"].isin(selected_teams))
-            & (year_df["year"] >= year_range[0])
-            & (year_df["year"] <= year_range[1])
-        ].copy()
-
-        fig, ax = plt.subplots(figsize=(10, 5))
-
-        for t in selected_teams:
-            team_data = subset[subset["team"] == t].sort_values("year")
-            color = team_colors.get(t, "#e10600")
-            if metric_choice == "Seasonal Point Margin":
-                y = team_data["margin_per_match_year"]
-            else:
-                y = team_data["win_pct_year"]
-
-            ax.plot(
-                team_data["year"],
-                y,
-                label=t,
-                linewidth=2,
-                marker="o",
-                markersize=6,
-                color=color,
+            # Win rate per year
+            yearly = (
+                team_df.groupby("year", as_index=False)
+                .agg(
+                    matches=("result", "count"),
+                    wins=("result", lambda x: (x == "Win").sum())
+                )
             )
+            yearly["win_pct"] = yearly["wins"] / yearly["matches"] * 100
 
-        ax.set_xlabel("Year")
-        ylabel = (
-            "Average Margin per Match (Season)"
-            if metric_choice == "Seasonal Point Margin"
-            else "Win Percentage (%)"
+            fig_win = px.line(
+                yearly,
+                x="year",
+                y="win_pct",
+                markers=True,
+                title=f"{selected_team} Win % by Year",
+            )
+            fig_win.update_layout(
+                xaxis_title="Year",
+                yaxis_title="Win Percentage",
+            )
+            st.plotly_chart(fig_win, use_container_width=True)
+
+            if "margin" in team_df.columns:
+                fig_margin = px.bar(
+                    team_df.sort_values("date"),
+                    x="date" if "date" in team_df.columns else "year",
+                    y="margin",
+                    title=f"{selected_team} Score Margin by Match",
+                )
+                fig_margin.update_layout(
+                    xaxis_title="Match Date" if "date" in team_df.columns else "Year",
+                    yaxis_title="Score Margin (Team - Opponent)",
+                )
+                st.plotly_chart(fig_margin, use_container_width=True)
+
+# ---------------------------------------------------------
+# TAB: Rankings
+# ---------------------------------------------------------
+with tab_rankings:
+    st.header("Global Rankings (Simple Performance Model)")
+
+    rankings_df = aggregate_rankings(df)
+
+    if rankings_df.empty:
+        st.info("Rankings require results and margin data.")
+    else:
+        st.markdown("Teams are ranked by **win percentage**, then **average score margin**, then **matches played**.")
+
+        st.dataframe(
+            rankings_df.style.format(
+                {"win_pct": "{:.1f}", "avg_margin": "{:.2f}"}
+            ),
+            use_container_width=True,
+            hide_index=True
         )
-        ax.set_ylabel(ylabel)
-        ax.set_title(f"{metric_choice} Over Time")
-        ax.legend()
-        style_chart(ax)
-        st.pyplot(fig)
 
+        fig_rank = px.bar(
+            rankings_df.head(10),
+            x="team",
+            y="win_pct",
+            title="Top 10 Teams by Win Percentage",
+        )
+        fig_rank.update_layout(
+            xaxis_title="Team",
+            yaxis_title="Win Percentage",
+        )
+        st.plotly_chart(fig_rank, use_container_width=True)
 
-# ==========================
-# TAB 4 — TEAM COMPARISON
-# ==========================
+# ---------------------------------------------------------
+# TAB: Trends
+# ---------------------------------------------------------
+with tab_trends:
+    st.header("Performance Trends")
+
+    trend_team = st.selectbox("Select a team for trend analysis", teams, key="trend_team")
+    trend_df = df[df["team"] == trend_team].copy()
+
+    if trend_df.empty:
+        st.warning("No data for this team.")
+    else:
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.subheader("Average Margin by Year")
+            by_year = trend_df.groupby("year", as_index=False).agg(avg_margin=("margin", "mean"))
+            fig_trend_margin = px.line(
+                by_year,
+                x="year",
+                y="avg_margin",
+                markers=True,
+                title=f"{trend_team} – Avg Score Margin by Year",
+            )
+            fig_trend_margin.update_layout(
+                xaxis_title="Year",
+                yaxis_title="Average Score Margin",
+            )
+            st.plotly_chart(fig_trend_margin, use_container_width=True)
+
+        with col2:
+            st.subheader("Win Rate vs Opponents")
+            vs_opp = trend_df.groupby("opponent", as_index=False).agg(
+                matches=("result", "count"),
+                wins=("result", lambda x: (x == "Win").sum())
+            )
+            vs_opp["win_pct"] = vs_opp["wins"] / vs_opp["matches"] * 100
+            vs_opp = vs_opp.sort_values("matches", ascending=False).head(12)
+
+            fig_opp = px.bar(
+                vs_opp,
+                x="opponent",
+                y="win_pct",
+                title=f"{trend_team} – Win % vs Top Opponents",
+            )
+            fig_opp.update_layout(
+                xaxis_title="Opponent",
+                yaxis_title="Win Percentage",
+            )
+            st.plotly_chart(fig_opp, use_container_width=True)
+
+# ---------------------------------------------------------
+# TAB: Compare
+# ---------------------------------------------------------
 with tab_compare:
-    st.subheader("Team Comparison")
+    st.header("Team Comparison")
 
-    colA, colB = st.columns(2)
-    with colA:
-        teamA = st.selectbox("Team A:", df.index, key="teamA_select")
-        logoA = team_logos.get(teamA)
-        if logoA:
-            st.image(logoA, width=130)
-    with colB:
-        # default index 1 just to avoid same team twice by default
-        default_index_B = 1 if len(df.index) > 1 else 0
-        teamB = st.selectbox("Team B:", df.index, index=default_index_B, key="teamB_select")
-        logoB = team_logos.get(teamB)
-        if logoB:
-            st.image(logoB, width=130)
+    col_a, col_b = st.columns(2)
+    with col_a:
+        team_a = st.selectbox("Team A", teams, key="compare_team_a")
+    with col_b:
+        team_b = st.selectbox("Team B", teams, key="compare_team_b")
 
-    if teamA == teamB:
+    if team_a == team_b:
         st.warning("Select two different teams to compare.")
     else:
-        st.markdown("---")
-        st.markdown("#### Head-to-Head Metrics")
+        # Head-to-head data
+        h2h_df = head_to_head(df, team_a, team_b)
 
-        def metric_row(label, a_val, b_val):
-            c1, c2, c3 = st.columns([2, 1, 1])
-            c1.write(f"**{label}**")
-            c2.write(str(a_val))
-            c3.write(str(b_val))
+        st.subheader("Head-to-Head Metrics")
 
-        a = df.loc[teamA]
-        b = df.loc[teamB]
+        if h2h_df.empty:
+            st.info("These teams have no recorded matches in the dataset.")
+        else:
+            # From perspective of Team A
+            a_as_team = h2h_df[h2h_df["team"] == team_a]
+            a_as_opp = h2h_df[h2h_df["opponent"] == team_a]
 
-        metric_row("Win %", f"{a['win_pct']:.1f}%", f"{b['win_pct']:.1f}%")
-        metric_row(
-            "Avg Margin per Match",
-            f"{a['margin_per_match']:.2f}",
-            f"{b['margin_per_match']:.2f}",
-        )
-        metric_row(
-            "Defense (Pts Allowed/Match)",
-            f"{a['points_allowed_per_match']:.2f}",
-            f"{b['points_allowed_per_match']:.2f}",
-        )
-        metric_row("World Cup Titles", int(a["world_cup_titles"]), int(b["world_cup_titles"]))
-
-        st.markdown("---")
-        st.markdown("#### Seasonal Margin Comparison")
-
-        figC, axC = plt.subplots(figsize=(10, 5))
-        for T in [teamA, teamB]:
-            tdata = year_df[year_df["team"] == T].sort_values("year")
-            axC.plot(
-                tdata["year"],
-                tdata["margin_per_match_year"],
-                label=T,
-                linewidth=2.5,
-                marker="o",
-                markersize=6,
-                color=team_colors.get(T, "#e10600"),
+            # Normalize so that A is always the "team" column
+            a_norm = pd.concat(
+                [
+                    a_as_team,
+                    a_as_opp.rename(
+                        columns={
+                            "team": "opponent",
+                            "opponent": "team",
+                            "team_score": "opponent_score",
+                            "opponent_score": "team_score",
+                        }
+                    )
+                ],
+                ignore_index=True
             )
 
-        axC.set_xlabel("Year")
-        axC.set_ylabel("Average Margin per Match (Season)")
-        axC.set_title("Seasonal Margin Comparison")
-        axC.legend()
-        style_chart(axC)
-        st.pyplot(figC)
+            a_summary = team_summary(a_norm)
+            b_summary = team_summary(
+                pd.concat(
+                    [
+                        h2h_df[h2h_df["team"] == team_b],
+                        h2h_df[h2h_df["opponent"] == team_b].rename(
+                            columns={
+                                "team": "opponent",
+                                "opponent": "team",
+                                "team_score": "opponent_score",
+                                "opponent_score": "team_score",
+                            }
+                        )
+                    ],
+                    ignore_index=True
+                )
+            )
 
+            metrics_table = pd.DataFrame(
+                {
+                    "Metric": [
+                        "Matches Played",
+                        "Wins",
+                        "Losses",
+                        "Draws",
+                        "Win %",
+                        "Avg Margin",
+                        "Avg Points For",
+                        "Avg Points Against",
+                    ],
+                    team_a: [
+                        a_summary["matches"],
+                        a_summary["wins"],
+                        a_summary["losses"],
+                        a_summary["draws"],
+                        f"{a_summary['win_pct']:.1f}%",
+                        f"{a_summary['avg_margin']:.2f}",
+                        f"{a_summary['avg_for']:.1f}",
+                        f"{a_summary['avg_against']:.1f}",
+                    ],
+                    team_b: [
+                        b_summary["matches"],
+                        b_summary["wins"],
+                        b_summary["losses"],
+                        b_summary["draws"],
+                        f"{b_summary['win_pct']:.1f}%",
+                        f"{b_summary['avg_margin']:.2f}",
+                        f"{b_summary['avg_for']:.1f}",
+                        f"{b_summary['avg_against']:.1f}",
+                    ],
+                }
+            )
 
-# ==========================
-# TAB 5 — WORLD CUPS
-# ==========================
-with tab_worldcups:
-    st.subheader("Rugby World Cup Winners (1987–2023)")
+            st.dataframe(
+                metrics_table,
+                use_container_width=True,
+                hide_index=True,
+            )
 
-    # Clean formatted timeline table as Markdown (no index column)
-    timeline_df = wcs[["year", "winner"]].copy()
-    timeline_df.columns = ["Year", "Winner"]
-    timeline_df["Year"] = timeline_df["Year"].astype(str)
-    timeline_df = timeline_df.reset_index(drop=True)
+            # Simple labeled chart – margin by match
+            st.subheader("Score Margin by Match (Team A Perspective)")
 
-    table_md = "| Year | Winner |\n|------|--------|\n"
-    for _, row in timeline_df.iterrows():
-        color = team_colors.get(row["Winner"], "#e10600")
-        table_md += (
-            f"| {row['Year']} | "
-            f"<span style='color:{color};font-weight:600;'>{row['Winner']}</span> |\n"
-        )
+            a_norm_sorted = a_norm.sort_values("date" if "date" in a_norm.columns else "year")
+            fig_h2h_margin = px.bar(
+                a_norm_sorted,
+                x="date" if "date" in a_norm_sorted.columns else "year",
+                y="margin",
+                title=f"{team_a} Score Margin vs {team_b} by Match",
+            )
+            fig_h2h_margin.update_layout(
+                xaxis_title="Match Date" if "date" in a_norm_sorted.columns else "Year",
+                yaxis_title="Score Margin (Team A - Team B)",
+            )
+            st.plotly_chart(fig_h2h_margin, use_container_width=True)
 
-    st.markdown(table_md, unsafe_allow_html=True)
+        # NOTE:
+        # No stray st.image(), no bare 'fig' objects,
+        # so the little broken-image icon should be gone.
 
-    st.markdown("---")
-    st.markdown("#### Total World Cup Titles")
+# ---------------------------------------------------------
+# TAB: World Cups
+# ---------------------------------------------------------
+with tab_wc:
+    st.header("Rugby World Cup History")
 
-    titles = wcs["winner"].value_counts()
-    fig3, ax3 = plt.subplots(figsize=(8, 4))
-    ax3.bar(
-        titles.index,
-        titles.values,
-        color=[team_colors.get(t, "#e10600") for t in titles.index],
+    st.dataframe(
+        wc_df,
+        use_container_width=True,
+        hide_index=True
     )
-    ax3.set_xlabel("Team")
-    ax3.set_ylabel("Titles")
-    ax3.set_title("Total Rugby World Cup Titles (1987–2023)")
-    plt.xticks(rotation=45, ha="right")
-    style_chart(ax3)
-    st.pyplot(fig3)
 
+    fig_wc = px.bar(
+        wc_df,
+        x="year",
+        y="winner",
+        title="Rugby World Cup Winners by Year",
+    )
+    fig_wc.update_layout(
+        xaxis_title="Year",
+        yaxis_title="Winning Nation",
+    )
+    st.plotly_chart(fig_wc, use_container_width=True)
 
-# ==========================
-# TAB 6 — ABOUT
-# ==========================
+# ---------------------------------------------------------
+# TAB: About
+# ---------------------------------------------------------
 with tab_about:
-    st.subheader("About This Project")
-    st.write(
+    st.header("About This Dashboard")
+    st.markdown(
         """
-        This dashboard explores international rugby dominance using:
+        This dashboard is a **Rugby Performance Analytics** playground.
 
-        - Win percentage  
-        - Scoring margins  
-        - Defensive strength  
-        - Seasonal trends  
-        - Rugby World Cup history  
+        **Tabs overview**
 
-        Built with **Python**, **pandas**, **matplotlib**, and **Streamlit**.
+        - **Team View** – Dive into one team at a time, with win %, score margins,
+          and match-level performance.
+        - **Rankings** – Simple global ranking table built from wins, losses, and
+          average margin.
+        - **Trends** – How performance evolves over time and against key opponents.
+        - **Compare** – Side-by-side head-to-head comparison between any two teams.
+        - **World Cups** – Quick reference of Rugby World Cup winners since 1987.
+
+        To plug in your own data, point `load_match_data()` to your CSV and make sure
+        it includes at least:
+        `team`, `opponent`, `team_score`, `opponent_score`, and `date` or `year`.
         """
     )
