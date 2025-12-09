@@ -487,4 +487,3 @@ with tab_about:
         `team`, `opponent`, `team_score`, `opponent_score`, and `date` or `year`.
         """
     )
-
