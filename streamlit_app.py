@@ -1,11 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.express as px
 
-# ---------------------------------------------------------
-# Page config
-# ---------------------------------------------------------
 st.set_page_config(
     page_title="Rugby Performance Analytics Dashboard",
     layout="wide"
@@ -16,22 +12,10 @@ st.set_page_config(
 # ---------------------------------------------------------
 @st.cache_data
 def load_match_data(path: str = "data/rugby_matches.csv") -> pd.DataFrame:
-    """
-    Try to load a matches CSV.
-    If not found, fall back to a small demo dataset so the app still runs.
-    Expected columns if using your own data:
-      - date (or year)
-      - team
-      - opponent
-      - team_score
-      - opponent_score
-      - tournament
-      - venue
-    """
     try:
         df = pd.read_csv(path)
     except Exception:
-        # Fallback demo dataset
+        # Fallback demo dataset so the app always runs
         data = [
             {"date": "2015-10-31", "team": "New Zealand", "opponent": "Australia",
              "team_score": 34, "opponent_score": 17, "tournament": "Rugby World Cup",
@@ -51,14 +35,14 @@ def load_match_data(path: str = "data/rugby_matches.csv") -> pd.DataFrame:
         ]
         df = pd.DataFrame(data)
 
-    # Basic derived columns
+    # Dates and year
     if "date" in df.columns:
         df["date"] = pd.to_datetime(df["date"])
         df["year"] = df["date"].dt.year
     elif "year" not in df.columns:
-        # If the user only has a year column, that's fine
         df["year"] = pd.to_numeric(df["year"], errors="coerce")
 
+    # Basic result + margin
     if "team_score" in df.columns and "opponent_score" in df.columns:
         df["margin"] = df["team_score"] - df["opponent_score"]
         conditions = [
@@ -69,7 +53,6 @@ def load_match_data(path: str = "data/rugby_matches.csv") -> pd.DataFrame:
         choices = ["Win", "Loss", "Draw"]
         df["result"] = np.select(conditions, choices, default="Unknown")
 
-    # Normalize some expected columns
     for col in ["tournament", "venue", "team", "opponent"]:
         if col in df.columns:
             df[col] = df[col].astype(str)
@@ -78,16 +61,12 @@ def load_match_data(path: str = "data/rugby_matches.csv") -> pd.DataFrame:
 
 
 df = load_match_data()
-
-# Precomputed list of teams for selectors
 teams = sorted(pd.unique(df[["team", "opponent"]].values.ravel()))
-
 
 # ---------------------------------------------------------
 # Helper functions
 # ---------------------------------------------------------
 def team_summary(df_team: pd.DataFrame) -> dict:
-    """Compute core metrics for one team."""
     total_matches = len(df_team)
     wins = (df_team["result"] == "Win").sum()
     losses = (df_team["result"] == "Loss").sum()
@@ -111,7 +90,6 @@ def team_summary(df_team: pd.DataFrame) -> dict:
 
 
 def head_to_head(df_all: pd.DataFrame, team_a: str, team_b: str) -> pd.DataFrame:
-    """Filter matches where team_a plays team_b (either home or away)."""
     mask = (
         ((df_all["team"] == team_a) & (df_all["opponent"] == team_b)) |
         ((df_all["team"] == team_b) & (df_all["opponent"] == team_a))
@@ -120,7 +98,6 @@ def head_to_head(df_all: pd.DataFrame, team_a: str, team_b: str) -> pd.DataFrame
 
 
 def aggregate_rankings(df_all: pd.DataFrame) -> pd.DataFrame:
-    """Create a simple ranking table by win percentage & average margin."""
     if "result" not in df_all.columns:
         return pd.DataFrame()
 
@@ -141,7 +118,6 @@ def aggregate_rankings(df_all: pd.DataFrame) -> pd.DataFrame:
     return ranked[cols]
 
 
-# Static World Cup history for the World Cups tab
 WORLD_CUPS = [
     {"year": 1987, "host": "New Zealand & Australia", "winner": "New Zealand", "runner_up": "France"},
     {"year": 1991, "host": "UK, France & Ireland", "winner": "Australia", "runner_up": "England"},
@@ -197,7 +173,7 @@ with tab_team:
         if not team_df.empty:
             st.subheader("Results Over Time")
 
-            # Win rate per year
+            # Win % by year
             yearly = (
                 team_df.groupby("year", as_index=False)
                 .agg(
@@ -207,31 +183,15 @@ with tab_team:
             )
             yearly["win_pct"] = yearly["wins"] / yearly["matches"] * 100
 
-            fig_win = px.line(
-                yearly,
-                x="year",
-                y="win_pct",
-                markers=True,
-                title=f"{selected_team} Win % by Year",
-            )
-            fig_win.update_layout(
-                xaxis_title="Year",
-                yaxis_title="Win Percentage",
-            )
-            st.plotly_chart(fig_win, use_container_width=True)
+            st.markdown("**Win % by Year**")
+            st.line_chart(yearly, x="year", y="win_pct")
 
+            # Margin by match
             if "margin" in team_df.columns:
-                fig_margin = px.bar(
-                    team_df.sort_values("date"),
-                    x="date" if "date" in team_df.columns else "year",
-                    y="margin",
-                    title=f"{selected_team} Score Margin by Match",
-                )
-                fig_margin.update_layout(
-                    xaxis_title="Match Date" if "date" in team_df.columns else "Year",
-                    yaxis_title="Score Margin (Team - Opponent)",
-                )
-                st.plotly_chart(fig_margin, use_container_width=True)
+                st.markdown("**Score Margin by Match**")
+                margin_df = team_df.sort_values("date" if "date" in team_df.columns else "year")
+                x_col = "date" if "date" in margin_df.columns else "year"
+                st.bar_chart(margin_df, x=x_col, y="margin")
 
 # ---------------------------------------------------------
 # TAB: Rankings
@@ -254,17 +214,9 @@ with tab_rankings:
             hide_index=True
         )
 
-        fig_rank = px.bar(
-            rankings_df.head(10),
-            x="team",
-            y="win_pct",
-            title="Top 10 Teams by Win Percentage",
-        )
-        fig_rank.update_layout(
-            xaxis_title="Team",
-            yaxis_title="Win Percentage",
-        )
-        st.plotly_chart(fig_rank, use_container_width=True)
+        st.markdown("**Top 10 Teams by Win %**")
+        top10 = rankings_df.head(10)
+        st.bar_chart(top10, x="team", y="win_pct")
 
 # ---------------------------------------------------------
 # TAB: Trends
@@ -283,18 +235,7 @@ with tab_trends:
         with col1:
             st.subheader("Average Margin by Year")
             by_year = trend_df.groupby("year", as_index=False).agg(avg_margin=("margin", "mean"))
-            fig_trend_margin = px.line(
-                by_year,
-                x="year",
-                y="avg_margin",
-                markers=True,
-                title=f"{trend_team} – Avg Score Margin by Year",
-            )
-            fig_trend_margin.update_layout(
-                xaxis_title="Year",
-                yaxis_title="Average Score Margin",
-            )
-            st.plotly_chart(fig_trend_margin, use_container_width=True)
+            st.line_chart(by_year, x="year", y="avg_margin")
 
         with col2:
             st.subheader("Win Rate vs Opponents")
@@ -304,18 +245,7 @@ with tab_trends:
             )
             vs_opp["win_pct"] = vs_opp["wins"] / vs_opp["matches"] * 100
             vs_opp = vs_opp.sort_values("matches", ascending=False).head(12)
-
-            fig_opp = px.bar(
-                vs_opp,
-                x="opponent",
-                y="win_pct",
-                title=f"{trend_team} – Win % vs Top Opponents",
-            )
-            fig_opp.update_layout(
-                xaxis_title="Opponent",
-                yaxis_title="Win Percentage",
-            )
-            st.plotly_chart(fig_opp, use_container_width=True)
+            st.bar_chart(vs_opp, x="opponent", y="win_pct")
 
 # ---------------------------------------------------------
 # TAB: Compare
@@ -332,7 +262,6 @@ with tab_compare:
     if team_a == team_b:
         st.warning("Select two different teams to compare.")
     else:
-        # Head-to-head data
         h2h_df = head_to_head(df, team_a, team_b)
 
         st.subheader("Head-to-Head Metrics")
@@ -340,11 +269,10 @@ with tab_compare:
         if h2h_df.empty:
             st.info("These teams have no recorded matches in the dataset.")
         else:
-            # From perspective of Team A
+            # Normalize so that A is always the team perspective
             a_as_team = h2h_df[h2h_df["team"] == team_a]
             a_as_opp = h2h_df[h2h_df["opponent"] == team_a]
 
-            # Normalize so that A is always the "team" column
             a_norm = pd.concat(
                 [
                     a_as_team,
@@ -419,25 +347,10 @@ with tab_compare:
                 hide_index=True,
             )
 
-            # Simple labeled chart – margin by match
             st.subheader("Score Margin by Match (Team A Perspective)")
-
             a_norm_sorted = a_norm.sort_values("date" if "date" in a_norm.columns else "year")
-            fig_h2h_margin = px.bar(
-                a_norm_sorted,
-                x="date" if "date" in a_norm_sorted.columns else "year",
-                y="margin",
-                title=f"{team_a} Score Margin vs {team_b} by Match",
-            )
-            fig_h2h_margin.update_layout(
-                xaxis_title="Match Date" if "date" in a_norm_sorted.columns else "Year",
-                yaxis_title="Score Margin (Team A - Team B)",
-            )
-            st.plotly_chart(fig_h2h_margin, use_container_width=True)
-
-        # NOTE:
-        # No stray st.image(), no bare 'fig' objects,
-        # so the little broken-image icon should be gone.
+            x_col = "date" if "date" in a_norm_sorted.columns else "year"
+            st.bar_chart(a_norm_sorted, x=x_col, y="margin")
 
 # ---------------------------------------------------------
 # TAB: World Cups
@@ -451,17 +364,9 @@ with tab_wc:
         hide_index=True
     )
 
-    fig_wc = px.bar(
-        wc_df,
-        x="year",
-        y="winner",
-        title="Rugby World Cup Winners by Year",
-    )
-    fig_wc.update_layout(
-        xaxis_title="Year",
-        yaxis_title="Winning Nation",
-    )
-    st.plotly_chart(fig_wc, use_container_width=True)
+    st.subheader("World Cup Titles by Nation")
+    wc_counts = wc_df["winner"].value_counts().rename_axis("team").reset_index(name="titles")
+    st.bar_chart(wc_counts, x="team", y="titles")
 
 # ---------------------------------------------------------
 # TAB: About
