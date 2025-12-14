@@ -3,224 +3,43 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
+
+# =========================================================
+# Page config
+# =========================================================
 st.set_page_config(
     page_title="Rugby Performance Analytics Dashboard",
-    layout="wide"
+    layout="wide",
 )
 
-# ---------------------------------------------------------
-# Base team list (Tier 1 + Tier 2)
-# ---------------------------------------------------------
-BASE_TEAMS = [
+st.title("Rugby Performance Analytics Dashboard")
+
+
+# =========================================================
+# Constants
+# =========================================================
+MIN_YEAR = 1987
+
+TIER_1_2_TEAMS = [
     # Tier 1
-    "New Zealand", "South Africa", "England", "Wales",
-    "Ireland", "France", "Australia",
+    "New Zealand",
+    "South Africa",
+    "England",
+    "Wales",
+    "Ireland",
+    "France",
+    "Australia",
     # Tier 2
-    "Argentina", "Fiji", "Samoa", "Tonga", "Japan",
-    "Georgia", "Italy", "USA", "Canada",
+    "Argentina",
+    "Fiji",
+    "Samoa",
+    "Tonga",
+    "Japan",
+    "Georgia",
+    "Italy",
+    "USA",
+    "Canada",
 ]
-
-# ---------------------------------------------------------
-# Data loading & preparation
-# ---------------------------------------------------------
-@st.cache_data
-def load_match_data() -> pd.DataFrame:
-    """
-    Load international rugby match data, prefer a Kaggle-style dataset,
-    and fall back to any local CSV or a tiny demo dataset if needed.
-
-    Expected Kaggle-style columns:
-    - date, home_team, away_team, home_score, away_score, tournament, ...
-
-    We:
-    - Filter to matches from 1987 onwards
-    - Keep only matches where either team is in BASE_TEAMS
-    - Expand each match into two rows (one per team perspective)
-    """
-    possible_paths = [
-        "data/rugby_matches.csv",
-        "data/international_rugby_union_results.csv",
-        "data/results.csv",
-    ]
-
-    df_raw = None
-    used_path = None
-
-    for p in possible_paths:
-        try:
-            df_raw = pd.read_csv(p)
-            used_path = p
-            break
-        except Exception:
-            continue
-
-    if df_raw is None:
-        # Fallback demo dataset so the app always runs
-        data = [
-            {"date": "2015-10-31", "home_team": "New Zealand", "away_team": "Australia",
-             "home_score": 34, "away_score": 17, "tournament": "Rugby World Cup",
-             "city": "London", "country": "England", "neutral": True},
-            {"date": "2019-11-02", "home_team": "South Africa", "away_team": "England",
-             "home_score": 32, "away_score": 12, "tournament": "Rugby World Cup",
-             "city": "Yokohama", "country": "Japan", "neutral": True},
-            {"date": "2023-10-28", "home_team": "South Africa", "away_team": "New Zealand",
-             "home_score": 12, "away_score": 11, "tournament": "Rugby World Cup",
-             "city": "Paris", "country": "France", "neutral": True},
-            {"date": "2022-07-09", "home_team": "New Zealand", "away_team": "Ireland",
-             "home_score": 12, "away_score": 23, "tournament": "Test Series",
-             "city": "Dunedin", "country": "New Zealand", "neutral": False},
-            {"date": "2022-07-16", "home_team": "New Zealand", "away_team": "Ireland",
-             "home_score": 22, "away_score": 32, "tournament": "Test Series",
-             "city": "Wellington", "country": "New Zealand", "neutral": False},
-        ]
-        df_raw = pd.DataFrame(data)
-        used_path = "demo_fallback"
-
-    # If it looks like the Kaggle-style dataset
-    if "home_team" in df_raw.columns and "away_team" in df_raw.columns:
-        # Parse date
-        df_raw["date"] = pd.to_datetime(df_raw["date"], errors="coerce")
-        df_raw = df_raw.dropna(subset=["date"])
-        df_raw["year"] = df_raw["date"].dt.year
-
-        # Filter to 1987+ (modern World Cup era)
-        df_raw = df_raw[df_raw["year"] >= 1987].copy()
-
-        # Filter to Tier 1 + Tier 2
-        mask = df_raw["home_team"].isin(BASE_TEAMS) | df_raw["away_team"].isin(BASE_TEAMS)
-        df_filtered = df_raw[mask].copy()
-
-        # Build team-perspective rows (two per match)
-        home_df = df_filtered.rename(
-            columns={
-                "home_team": "team",
-                "away_team": "opponent",
-                "home_score": "team_score",
-                "away_score": "opponent_score",
-            }
-        )
-        away_df = df_filtered.rename(
-            columns={
-                "away_team": "team",
-                "home_team": "opponent",
-                "away_score": "team_score",
-                "home_score": "opponent_score",
-            }
-        )
-        # Keep date/year/tournament/venue-ish info
-        keep_cols = [
-            "date", "year", "team", "opponent", "team_score", "opponent_score",
-            "tournament", "city", "country", "neutral"
-        ]
-        for col in keep_cols:
-            if col not in home_df.columns:
-                home_df[col] = np.nan
-            if col not in away_df.columns:
-                away_df[col] = np.nan
-
-        df = pd.concat([home_df[keep_cols], away_df[keep_cols]], ignore_index=True)
-
-    else:
-        # Legacy-style dataset: try to adapt to the same schema
-        df = df_raw.copy()
-        if "date" in df.columns:
-            df["date"] = pd.to_datetime(df["date"], errors="coerce")
-            df = df.dropna(subset=["date"])
-            df["year"] = df["date"].dt.year
-        elif "year" not in df.columns:
-            df["year"] = pd.to_numeric(df.get("year", pd.Series([])), errors="coerce")
-
-        # Ensure required columns exist
-        for col in ["team", "opponent", "team_score", "opponent_score"]:
-            if col not in df.columns:
-                df[col] = np.nan
-
-        # Filter to 1987+ if year exists
-        if "year" in df.columns:
-            df = df[df["year"] >= 1987].copy()
-
-    # Result + margin
-    if "team_score" in df.columns and "opponent_score" in df.columns:
-        df["margin"] = df["team_score"] - df["opponent_score"]
-        conditions = [
-            df["team_score"] > df["opponent_score"],
-            df["team_score"] < df["opponent_score"],
-            df["team_score"] == df["opponent_score"],
-        ]
-        choices = ["Win", "Loss", "Draw"]
-        df["result"] = np.select(conditions, choices, default="Unknown")
-
-    # Stringify some columns if present
-    for col in ["tournament", "city", "country", "team", "opponent"]:
-        if col in df.columns:
-            df[col] = df[col].astype(str)
-
-    return df
-
-
-df = load_match_data()
-
-# Teams that actually appear in the data
-teams_in_data = sorted(pd.unique(df[["team", "opponent"]].values.ravel()))
-
-# Union of configured teams + those found in the dataset
-teams = sorted(set(BASE_TEAMS) | set(teams_in_data))
-
-
-# ---------------------------------------------------------
-# Helper functions
-# ---------------------------------------------------------
-def team_summary(df_team: pd.DataFrame) -> dict:
-    total_matches = len(df_team)
-    wins = (df_team["result"] == "Win").sum()
-    losses = (df_team["result"] == "Loss").sum()
-    draws = (df_team["result"] == "Draw").sum()
-
-    win_pct = wins / total_matches * 100 if total_matches > 0 else 0.0
-    avg_margin = df_team["margin"].mean() if "margin" in df_team.columns else 0.0
-    avg_points_for = df_team["team_score"].mean() if "team_score" in df_team.columns else 0.0
-    avg_points_against = df_team["opponent_score"].mean() if "opponent_score" in df_team.columns else 0.0
-
-    return {
-        "matches": total_matches,
-        "wins": wins,
-        "losses": losses,
-        "draws": draws,
-        "win_pct": win_pct,
-        "avg_margin": avg_margin,
-        "avg_for": avg_points_for,
-        "avg_against": avg_points_against,
-    }
-
-
-def head_to_head(df_all: pd.DataFrame, team_a: str, team_b: str) -> pd.DataFrame:
-    mask = (
-        ((df_all["team"] == team_a) & (df_all["opponent"] == team_b)) |
-        ((df_all["team"] == team_b) & (df_all["opponent"] == team_a))
-    )
-    return df_all[mask].copy()
-
-
-def aggregate_rankings(df_all: pd.DataFrame) -> pd.DataFrame:
-    if "result" not in df_all.columns:
-        return pd.DataFrame()
-
-    grouped = df_all.groupby("team", as_index=False).agg(
-        matches=("result", "count"),
-        wins=("result", lambda x: (x == "Win").sum()),
-        losses=("result", lambda x: (x == "Loss").sum()),
-        draws=("result", lambda x: (x == "Draw").sum()),
-        avg_margin=("margin", "mean"),
-    )
-    grouped["win_pct"] = grouped["wins"] / grouped["matches"] * 100
-    ranked = grouped.sort_values(
-        by=["win_pct", "avg_margin", "matches"],
-        ascending=[False, False, False]
-    ).reset_index(drop=True)
-    ranked["rank"] = ranked.index + 1
-    cols = ["rank", "team", "matches", "wins", "losses", "draws", "win_pct", "avg_margin"]
-    return ranked[cols]
-
 
 WORLD_CUPS = [
     {"year": 1987, "host": "New Zealand & Australia", "winner": "New Zealand", "runner_up": "France"},
@@ -234,244 +53,396 @@ WORLD_CUPS = [
     {"year": 2019, "host": "Japan", "winner": "South Africa", "runner_up": "England"},
     {"year": 2023, "host": "France", "winner": "South Africa", "runner_up": "New Zealand"},
 ]
-wc_df = pd.DataFrame(WORLD_CUPS)
 
-# ---------------------------------------------------------
-# Layout – main title and tabs
-# ---------------------------------------------------------
-st.title("Rugby Performance Analytics Dashboard")
 
-st.caption(
-    "This dashboard uses real international rugby results. The selectors list all Tier 1 + Tier 2 nations, "
-    "even if your current dataset only has matches for some of them. "
-    "Teams with no rows in the data will show a 'No data available' message."
-)
+# =========================================================
+# Data Loading
+# =========================================================
+@st.cache_data
+def load_data(path: str = "data/rugby_matches.csv") -> pd.DataFrame:
+    df = pd.read_csv(path)
 
+    # Defensive cleanup
+    df.columns = [c.strip().lower() for c in df.columns]
+
+    # Required columns from build_dataset.py output
+    required = {
+        "date",
+        "year",
+        "team",
+        "opponent",
+        "team_score",
+        "opponent_score",
+        "margin",
+        "result",
+        "tournament",
+    }
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(f"Dataset missing required columns: {missing}")
+
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df.dropna(subset=["date"]).copy()
+
+    # Ensure types
+    df["year"] = pd.to_numeric(df["year"], errors="coerce").astype("Int64")
+    df["team_score"] = pd.to_numeric(df["team_score"], errors="coerce")
+    df["opponent_score"] = pd.to_numeric(df["opponent_score"], errors="coerce")
+    df["margin"] = pd.to_numeric(df["margin"], errors="coerce")
+
+    # Normalize strings
+    df["team"] = df["team"].astype(str)
+    df["opponent"] = df["opponent"].astype(str)
+    df["tournament"] = df["tournament"].astype(str)
+    df["result"] = df["result"].astype(str)
+
+    # Keep modern era (should already be filtered, but keep it safe)
+    df = df[df["year"] >= MIN_YEAR].copy()
+
+    return df
+
+
+try:
+    df = load_data()
+except Exception as e:
+    st.error("App failed to load the dataset.")
+    st.code(str(e))
+    st.stop()
+
+
+# =========================================================
+# Helpers
+# =========================================================
+def team_summary(df_team: pd.DataFrame) -> dict:
+    total = len(df_team)
+    wins = int((df_team["result"] == "Win").sum())
+    losses = int((df_team["result"] == "Loss").sum())
+    draws = int((df_team["result"] == "Draw").sum())
+
+    win_pct = (wins / total * 100) if total else 0.0
+    avg_margin = float(df_team["margin"].mean()) if total else 0.0
+    avg_for = float(df_team["team_score"].mean()) if total else 0.0
+    avg_against = float(df_team["opponent_score"].mean()) if total else 0.0
+
+    return {
+        "matches": total,
+        "wins": wins,
+        "losses": losses,
+        "draws": draws,
+        "win_pct": win_pct,
+        "avg_margin": avg_margin,
+        "avg_for": avg_for,
+        "avg_against": avg_against,
+    }
+
+
+def compute_rankings(df_all: pd.DataFrame) -> pd.DataFrame:
+    grouped = df_all.groupby("team", as_index=False).agg(
+        matches=("result", "count"),
+        wins=("result", lambda x: int((x == "Win").sum())),
+        losses=("result", lambda x: int((x == "Loss").sum())),
+        draws=("result", lambda x: int((x == "Draw").sum())),
+        avg_margin=("margin", "mean"),
+        avg_points_for=("team_score", "mean"),
+        avg_points_against=("opponent_score", "mean"),
+    )
+    grouped["win_pct"] = grouped["wins"] / grouped["matches"] * 100
+    ranked = grouped.sort_values(
+        by=["win_pct", "avg_margin", "matches"],
+        ascending=[False, False, False],
+    ).reset_index(drop=True)
+    ranked.insert(0, "rank", np.arange(1, len(ranked) + 1))
+    return ranked
+
+
+def static_bar_chart(categories, values, title, xlabel=None, ylabel=None, rotate_x=45):
+    fig, ax = plt.subplots()
+    ax.bar(categories, values)
+    ax.set_title(title)
+    if xlabel:
+        ax.set_xlabel(xlabel)
+    if ylabel:
+        ax.set_ylabel(ylabel)
+    ax.tick_params(axis="x", rotation=rotate_x, labelsize=8)
+    fig.tight_layout()
+    st.pyplot(fig, use_container_width=True)
+
+
+def static_line_chart(x, y, title, xlabel=None, ylabel=None):
+    fig, ax = plt.subplots()
+    ax.plot(x, y)
+    ax.set_title(title)
+    if xlabel:
+        ax.set_xlabel(xlabel)
+    if ylabel:
+        ax.set_ylabel(ylabel)
+    fig.tight_layout()
+    st.pyplot(fig, use_container_width=True)
+
+
+def static_margin_bar_by_date(df_rows: pd.DataFrame, title: str):
+    # Bar chart of margin vs date (static)
+    df_plot = df_rows.sort_values("date").copy()
+    fig, ax = plt.subplots()
+    ax.bar(df_plot["date"].dt.strftime("%Y-%m-%d"), df_plot["margin"])
+    ax.set_title(title)
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Margin")
+    ax.tick_params(axis="x", rotation=90, labelsize=6)
+    fig.tight_layout()
+    st.pyplot(fig, use_container_width=True)
+
+
+# =========================================================
+# Sidebar controls (global)
+# =========================================================
+with st.sidebar:
+    st.header("Filters")
+    year_min = int(df["year"].min()) if df["year"].notna().any() else MIN_YEAR
+    year_max = int(df["year"].max()) if df["year"].notna().any() else MIN_YEAR
+
+    year_range = st.slider(
+        "Year range",
+        min_value=year_min,
+        max_value=year_max,
+        value=(max(MIN_YEAR, year_min), year_max),
+        step=1,
+    )
+
+    tournaments = sorted(df["tournament"].dropna().unique().tolist())
+    selected_tournaments = st.multiselect(
+        "Tournaments (optional)",
+        options=tournaments,
+        default=[],
+    )
+
+    st.caption("Tip: leave tournaments empty to include everything.")
+
+
+df_filtered = df[
+    (df["year"] >= year_range[0]) & (df["year"] <= year_range[1])
+].copy()
+
+if selected_tournaments:
+    df_filtered = df_filtered[df_filtered["tournament"].isin(selected_tournaments)].copy()
+
+
+# Build team list from filtered data (still allow Tier list ordering)
+teams_in_data = sorted(set(df_filtered["team"].unique().tolist()) | set(df_filtered["opponent"].unique().tolist()))
+teams_ordered = [t for t in TIER_1_2_TEAMS if t in teams_in_data] + [t for t in teams_in_data if t not in TIER_1_2_TEAMS]
+
+
+# =========================================================
+# Tabs
+# =========================================================
 tab_team, tab_rankings, tab_trends, tab_compare, tab_wc, tab_about = st.tabs(
     ["Team View", "Rankings", "Trends", "Compare", "World Cups", "About"]
 )
 
 # ---------------------------------------------------------
-# TAB: Team View
+# Team View
 # ---------------------------------------------------------
 with tab_team:
     st.header("Team View")
 
-    col1, col2 = st.columns([2, 3])
+    col1, col2 = st.columns([1, 2], vertical_alignment="top")
 
     with col1:
-        selected_team = st.selectbox("Select a team", teams, key="team_view_team")
-        team_df = df[df["team"] == selected_team].copy()
+        team = st.selectbox("Select a team", options=teams_ordered, index=0)
+
+        team_df = df_filtered[df_filtered["team"] == team].copy()
 
         if team_df.empty:
-            st.warning(
-                f"No data available for **{selected_team}** in the current dataset. "
-                "Add matches for this team to your CSV to populate this view."
-            )
+            st.warning("No matches found for this team with the current filters.")
         else:
-            summary = team_summary(team_df)
+            s = team_summary(team_df)
 
-            st.subheader(f"{selected_team} – Summary")
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Matches", summary["matches"])
-            c2.metric("Win %", f"{summary['win_pct']:.1f}%")
-            c3.metric("Avg Margin", f"{summary['avg_margin']:.2f}")
+            st.subheader("Summary")
+            a, b, c = st.columns(3)
+            a.metric("Matches", s["matches"])
+            b.metric("Win %", f"{s['win_pct']:.1f}%")
+            c.metric("Avg Margin", f"{s['avg_margin']:.2f}")
 
-            c4, c5, c6 = st.columns(3)
-            c4.metric("Avg Points For", f"{summary['avg_for']:.1f}")
-            c5.metric("Avg Points Against", f"{summary['avg_against']:.1f}")
-            c6.metric("Draws", summary["draws"])
+            d, e, f = st.columns(3)
+            d.metric("Wins", s["wins"])
+            e.metric("Losses", s["losses"])
+            f.metric("Draws", s["draws"])
+
+            st.caption(f"Avg Points For: {s['avg_for']:.1f}  |  Avg Points Against: {s['avg_against']:.1f}")
 
     with col2:
         if not team_df.empty:
-            st.subheader("Results Over Time")
+            st.subheader("Win % by Year (Static)")
 
-            # Win % by year
-            yearly = (
-                team_df.groupby("year", as_index=False)
-                .agg(
-                    matches=("result", "count"),
-                    wins=("result", lambda x: (x == "Win").sum())
-                )
+            by_year = team_df.groupby("year", as_index=False).agg(
+                matches=("result", "count"),
+                wins=("result", lambda x: int((x == "Win").sum())),
             )
-            yearly["win_pct"] = yearly["wins"] / yearly["matches"] * 100
+            by_year["win_pct"] = by_year["wins"] / by_year["matches"] * 100
+            by_year = by_year.sort_values("year")
 
-            st.markdown("**Win % by Year**")
-            st.line_chart(yearly, x="year", y="win_pct")
+            static_line_chart(
+                x=by_year["year"].astype(int).tolist(),
+                y=by_year["win_pct"].tolist(),
+                title=f"{team} – Win % by Year",
+                xlabel="Year",
+                ylabel="Win %",
+            )
 
-            # Margin by match
-            if "margin" in team_df.columns:
-                st.markdown("**Score Margin by Match**")
-                margin_df = team_df.sort_values("date" if "date" in team_df.columns else "year")
-                x_col = "date" if "date" in margin_df.columns else "year"
-                st.bar_chart(margin_df, x=x_col, y="margin")
+            st.subheader("Score Margin by Match (Static)")
+            # limit bars to keep it readable
+            recent_n = st.slider("Show last N matches", min_value=10, max_value=80, value=30, step=5, key="teamview_n")
+            recent = team_df.sort_values("date").tail(recent_n)
+            static_margin_bar_by_date(recent, title=f"{team} – Margin (Last {recent_n} Matches)")
+
+            st.subheader("Recent Matches (Non-editable)")
+            show_cols = ["date", "opponent", "team_score", "opponent_score", "margin", "result", "tournament"]
+            table_df = team_df.sort_values("date", ascending=False)[show_cols].head(15).copy()
+            table_df["date"] = table_df["date"].dt.strftime("%Y-%m-%d")
+            st.table(table_df)
 
 # ---------------------------------------------------------
-# TAB: Rankings
+# Rankings
 # ---------------------------------------------------------
 with tab_rankings:
-    st.header("Global Rankings (Simple Performance Model)")
+    st.header("Rankings")
 
-    rankings_df = aggregate_rankings(df)
+    rankings = compute_rankings(df_filtered)
 
-    if rankings_df.empty:
-        st.info("Rankings require results and margin data.")
+    if rankings.empty:
+        st.warning("No ranking data available with the current filters.")
     else:
-        rankings_display = rankings_df.rename(
-            columns={
-                "rank": "Rank",
-                "team": "Team",
-                "matches": "Matches",
-                "wins": "Wins",
-                "losses": "Losses",
-                "draws": "Draws",
-                "win_pct": "Win %",
-                "avg_margin": "Avg Margin",
-            }
-        )
+        # Full table: keep it readable; static would be painful at this size
+        display = rankings.copy()
+        display["win_pct"] = display["win_pct"].map(lambda v: round(float(v), 1))
+        display["avg_margin"] = display["avg_margin"].map(lambda v: round(float(v), 2))
+        display["avg_points_for"] = display["avg_points_for"].map(lambda v: round(float(v), 1))
+        display["avg_points_against"] = display["avg_points_against"].map(lambda v: round(float(v), 1))
 
-        st.markdown(
-            "Teams are ranked by **Win %**, then **Average Score Margin**, "
-            "then **Matches Played**."
-        )
-
-        styled_rankings = rankings_display.style.format(
-            {"Win %": "{:.1f}", "Avg Margin": "{:.2f}"}
-        ).set_properties(**{"text-align": "left"}).set_table_styles(
-            [dict(selector="th", props=[("text-align", "left")])]
-        )
-
+        st.caption("Sorted by Win %, then Avg Margin, then Matches.")
         st.dataframe(
-            styled_rankings,
+            display[["rank", "team", "matches", "wins", "losses", "draws", "win_pct", "avg_margin"]],
             use_container_width=True,
-            hide_index=True
+            hide_index=True,
         )
 
-        # Static Top N bar chart using matplotlib (no zoom/scroll)
-        top_n = min(10, len(rankings_display))
-        top_df = rankings_display.head(top_n)
+        st.divider()
 
-        st.subheader(f"Top {top_n} Teams by Win %")
+        st.subheader("Top 3 (Non-editable)")
+        top3 = display.head(3)[["rank", "team", "matches", "win_pct", "avg_margin"]].copy()
+        st.table(top3)
 
-        fig, ax = plt.subplots()
-        ax.bar(top_df["Team"], top_df["Win %"])
-        ax.set_xlabel("Team")
-        ax.set_ylabel("Win %")
-        ax.set_title(f"Top {top_n} Teams by Win %")
-        ax.tick_params(axis="x", rotation=45, labelsize=8)
-        fig.tight_layout()
-        st.pyplot(fig, use_container_width=True)
+        st.subheader("Top 10 by Win % (Static)")
+        top10 = display.head(10).copy()
+        static_bar_chart(
+            categories=top10["team"].tolist(),
+            values=top10["win_pct"].tolist(),
+            title="Top 10 Teams by Win %",
+            xlabel="Team",
+            ylabel="Win %",
+            rotate_x=45,
+        )
 
 # ---------------------------------------------------------
-# TAB: Trends
+# Trends
 # ---------------------------------------------------------
 with tab_trends:
-    st.header("Performance Trends")
+    st.header("Trends")
 
-    trend_team = st.selectbox("Select a team for trend analysis", teams, key="trend_team")
-    trend_df = df[df["team"] == trend_team].copy()
+    team = st.selectbox("Select a team", options=teams_ordered, index=0, key="trends_team")
 
-    if trend_df.empty:
-        st.warning(
-            f"No match data found for **{trend_team}**. "
-            "Add rows for this team to your dataset to see trend charts here."
-        )
+    tdf = df_filtered[df_filtered["team"] == team].copy()
+    if tdf.empty:
+        st.warning("No matches found for this team with the current filters.")
     else:
-        col1, col2 = st.columns(2)
+        c1, c2 = st.columns(2, vertical_alignment="top")
 
-        with col1:
-            st.subheader("Average Margin by Year")
-            by_year = trend_df.groupby("year", as_index=False).agg(avg_margin=("margin", "mean"))
-            st.line_chart(by_year, x="year", y="avg_margin")
-
-        with col2:
-            st.subheader("Win Rate vs Opponents")
-            vs_opp = trend_df.groupby("opponent", as_index=False).agg(
-                matches=("result", "count"),
-                wins=("result", lambda x: (x == "Win").sum())
+        with c1:
+            st.subheader("Average Margin by Year (Static)")
+            by_year = tdf.groupby("year", as_index=False).agg(avg_margin=("margin", "mean")).sort_values("year")
+            static_line_chart(
+                x=by_year["year"].astype(int).tolist(),
+                y=by_year["avg_margin"].tolist(),
+                title=f"{team} – Avg Margin by Year",
+                xlabel="Year",
+                ylabel="Avg Margin",
             )
-            vs_opp["win_pct"] = vs_opp["wins"] / vs_opp["matches"] * 100
-            vs_opp = vs_opp.sort_values("matches", ascending=False).head(12)
-            st.bar_chart(vs_opp, x="opponent", y="win_pct")
+
+        with c2:
+            st.subheader("Win % vs Opponents (Top 12 by Matches)")
+            vs = tdf.groupby("opponent", as_index=False).agg(
+                matches=("result", "count"),
+                wins=("result", lambda x: int((x == "Win").sum())),
+            )
+            vs["win_pct"] = vs["wins"] / vs["matches"] * 100
+            vs = vs.sort_values("matches", ascending=False).head(12)
+            vs = vs.sort_values("win_pct", ascending=False)
+
+            # Static bar chart
+            static_bar_chart(
+                categories=vs["opponent"].tolist(),
+                values=vs["win_pct"].tolist(),
+                title=f"{team} – Win % vs Opponents (Top 12 by Matches)",
+                xlabel="Opponent",
+                ylabel="Win %",
+                rotate_x=60,
+            )
 
 # ---------------------------------------------------------
-# TAB: Compare
+# Compare
 # ---------------------------------------------------------
 with tab_compare:
-    st.header("Team Comparison")
+    st.header("Compare")
 
-    col_a, col_b = st.columns(2)
-    with col_a:
-        team_a = st.selectbox("Team A", teams, key="compare_team_a")
-    with col_b:
-        team_b = st.selectbox("Team B", teams, key="compare_team_b")
+    colA, colB = st.columns(2, vertical_alignment="top")
+    with colA:
+        team_a = st.selectbox("Team A", options=teams_ordered, index=0, key="compare_a")
+    with colB:
+        team_b = st.selectbox("Team B", options=teams_ordered, index=1 if len(teams_ordered) > 1 else 0, key="compare_b")
 
     if team_a == team_b:
-        st.warning("Select two different teams to compare.")
+        st.warning("Pick two different teams.")
     else:
-        h2h_df = head_to_head(df, team_a, team_b)
+        # Head-to-head in team-centric dataset is easy:
+        h2h_a = df_filtered[(df_filtered["team"] == team_a) & (df_filtered["opponent"] == team_b)].copy()
+        h2h_b = df_filtered[(df_filtered["team"] == team_b) & (df_filtered["opponent"] == team_a)].copy()
 
-        st.subheader("Head-to-Head Metrics")
+        st.subheader("Head-to-Head Summary")
 
-        a_has_data = not df[df["team"] == team_a].empty
-        b_has_data = not df[df["team"] == team_b].empty
-
-        if not a_has_data or not b_has_data:
-            st.warning(
-                "One or both selected teams have no data in the current dataset. "
-                "Add match rows for both teams to see a full comparison."
-            )
-        elif h2h_df.empty:
-            st.info("These teams have no recorded head-to-head matches in the dataset.")
+        if h2h_a.empty and h2h_b.empty:
+            st.info("No head-to-head matches found with current filters.")
         else:
-            a_as_team = h2h_df[h2h_df["team"] == team_a]
-            a_as_opp = h2h_df[h2h_df["opponent"] == team_a]
-
-            a_norm = pd.concat(
-                [
-                    a_as_team,
-                    a_as_opp.rename(
-                        columns={
-                            "team": "opponent",
-                            "opponent": "team",
-                            "team_score": "opponent_score",
-                            "opponent_score": "team_score",
-                        }
-                    )
-                ],
-                ignore_index=True
-            )
-
-            a_summary = team_summary(a_norm)
-            b_summary = team_summary(
-                pd.concat(
-                    [
-                        h2h_df[h2h_df["team"] == team_b],
-                        h2h_df[h2h_df["opponent"] == team_b].rename(
-                            columns={
-                                "team": "opponent",
-                                "opponent": "team",
-                                "team_score": "opponent_score",
-                                "opponent_score": "team_score",
-                            }
-                        )
-                    ],
-                    ignore_index=True
+            # Build one combined view, but keep team A perspective for consistent reading
+            # If we have A rows, use those; else convert B rows into A perspective
+            if not h2h_a.empty:
+                a_view = h2h_a.copy()
+            else:
+                # Convert B rows into A perspective
+                a_view = h2h_b.rename(
+                    columns={
+                        "team": "opponent",
+                        "opponent": "team",
+                        "team_score": "opponent_score",
+                        "opponent_score": "team_score",
+                        "margin": "margin",
+                        "result": "result",
+                    }
+                ).copy()
+                a_view["team"] = team_a
+                a_view["opponent"] = team_b
+                a_view["margin"] = a_view["team_score"] - a_view["opponent_score"]
+                a_view["result"] = np.select(
+                    [a_view["margin"] > 0, a_view["margin"] < 0, a_view["margin"] == 0],
+                    ["Win", "Loss", "Draw"],
+                    default="Unknown",
                 )
-            )
 
-            metrics_table = pd.DataFrame(
+            a_summary = team_summary(a_view)
+
+            # Show metrics side-by-side (non-editable table)
+            metrics = pd.DataFrame(
                 {
-                    "Metric": [
-                        "Matches Played",
-                        "Wins",
-                        "Losses",
-                        "Draws",
-                        "Win %",
-                        "Avg Margin",
-                        "Avg Points For",
-                        "Avg Points Against",
-                    ],
+                    "Metric": ["Matches", "Wins", "Losses", "Draws", "Win %", "Avg Margin", "Avg PF", "Avg PA"],
                     team_a: [
                         a_summary["matches"],
                         a_summary["wins"],
@@ -482,104 +453,66 @@ with tab_compare:
                         f"{a_summary['avg_for']:.1f}",
                         f"{a_summary['avg_against']:.1f}",
                     ],
-                    team_b: [
-                        b_summary["matches"],
-                        b_summary["wins"],
-                        b_summary["losses"],
-                        b_summary["draws"],
-                        f"{b_summary['win_pct']:.1f}%",
-                        f"{b_summary['avg_margin']:.2f}",
-                        f"{b_summary['avg_for']:.1f}",
-                        f"{b_summary['avg_against']:.1f}",
-                    ],
                 }
             )
+            st.table(metrics)
 
-            metrics_styled = metrics_table.style.set_properties(
-                **{"text-align": "left"}
-            ).set_table_styles(
-                [dict(selector="th", props=[("text-align", "left")])]
-            )
+            st.subheader("Head-to-Head Margin by Match (Static)")
+            recent_n = st.slider("Show last N head-to-head matches", min_value=5, max_value=50, value=15, step=5, key="h2h_n")
+            recent = a_view.sort_values("date").tail(recent_n)
+            static_margin_bar_by_date(recent, title=f"{team_a} vs {team_b} – Margin (Last {recent_n})")
 
-            st.dataframe(
-                metrics_styled,
-                use_container_width=True,
-                hide_index=True,
-            )
-
-            st.subheader("Score Margin by Match (Team A Perspective)")
-            a_norm_sorted = a_norm.sort_values("date" if "date" in a_norm.columns else "year")
-            x_col = "date" if "date" in a_norm_sorted.columns else "year"
-            st.bar_chart(a_norm_sorted, x=x_col, y="margin")
+            st.subheader("Recent Head-to-Head Matches (Non-editable)")
+            show_cols = ["date", "team_score", "opponent_score", "margin", "result", "tournament"]
+            recent_tbl = a_view.sort_values("date", ascending=False)[show_cols].head(15).copy()
+            recent_tbl["date"] = recent_tbl["date"].dt.strftime("%Y-%m-%d")
+            st.table(recent_tbl)
 
 # ---------------------------------------------------------
-# TAB: World Cups
+# World Cups
 # ---------------------------------------------------------
 with tab_wc:
-    st.header("Rugby World Cup History")
+    st.header("Rugby World Cups")
 
-    wc_display = wc_df.copy()
-    wc_display["Year"] = wc_display["year"].astype(str)
-    wc_display = wc_display.rename(
-        columns={
-            "host": "Host",
-            "winner": "Winner",
-            "runner_up": "Runner-up",
-        }
-    )[["Year", "Host", "Winner", "Runner-up"]]
+    wc_df = pd.DataFrame(WORLD_CUPS)
+    wc_display = wc_df.rename(columns={"year": "Year", "host": "Host", "winner": "Winner", "runner_up": "Runner-up"})[
+        ["Year", "Host", "Winner", "Runner-up"]
+    ]
 
-    wc_styled = wc_display.style.set_properties(
-        **{"text-align": "left"}
-    ).set_table_styles(
-        [dict(selector="th", props=[("text-align", "left")])]
+    st.subheader("Winners by Year (Non-editable)")
+    st.table(wc_display)
+
+    st.subheader("Titles by Nation (Static)")
+    titles = wc_df.groupby("winner", as_index=False).size().rename(columns={"winner": "Nation", "size": "Titles"})
+    titles = titles.sort_values(["Titles", "Nation"], ascending=[False, True])
+
+    static_bar_chart(
+        categories=titles["Nation"].tolist(),
+        values=titles["Titles"].tolist(),
+        title="Rugby World Cup Titles by Nation",
+        xlabel="Nation",
+        ylabel="Titles",
+        rotate_x=45,
     )
-
-    st.dataframe(
-        wc_styled,
-        use_container_width=True,
-        hide_index=True
-    )
-
-    st.subheader("World Cup Titles by Nation")
-
-    nations = sorted(set(wc_df["winner"]) | set(wc_df["runner_up"]))
-    title_counts = []
-    for nation in nations:
-        titles = (wc_df["winner"] == nation).sum()
-        title_counts.append({"Nations": nation, "Titles": titles})
-
-    titles_df = pd.DataFrame(title_counts).sort_values(
-        by=["Titles", "Nations"], ascending=[False, True]
-    )
-
-    fig, ax = plt.subplots()
-    ax.bar(titles_df["Nations"], titles_df["Titles"])
-    ax.set_xlabel("Nation")
-    ax.set_ylabel("Titles")
-    ax.set_title("Rugby World Cup Titles by Nation")
-    ax.tick_params(axis="x", rotation=45, labelsize=8)
-    fig.tight_layout()
-    st.pyplot(fig, use_container_width=True)
 
 # ---------------------------------------------------------
-# TAB: About
+# About
 # ---------------------------------------------------------
 with tab_about:
-    st.header("About This Dashboard")
+    st.header("About")
+
     st.markdown(
-        """
-        This dashboard is a **Rugby Performance Analytics** playground powered by real
-        international match data.
+        f"""
+**Data Source:** `data/rugby_matches.csv` (team-centric match rows)
 
-        **Tabs overview**
+**Dataset rules (current build):**
+- Modern era only: {MIN_YEAR}+  
+- Tier 1 + Tier 2 nations  
+- Each match is represented twice (one row per team perspective)
 
-        - **Team View** – One team at a time: Win %, score margins, and match-level performance.
-        - **Rankings** – Simple global ranking table built from Wins, Losses, and Average Margin.
-        - **Trends** – How performance evolves over time and against key opponents.
-        - **Compare** – Side-by-side head-to-head comparison between any two teams.
-        - **World Cups** – Quick reference of Rugby World Cup winners since 1987.
-
-        To plug in your own data, drop a CSV into the `data/` folder with at least:
-        `date`, `home_team`, `away_team`, `home_score`, `away_score`, and `tournament`.
-        """
+**What this enables:**
+- Rankings based on real match volume
+- Meaningful trends across decades
+- Clean head-to-head comparisons without fragile home/away logic
+"""
     )
