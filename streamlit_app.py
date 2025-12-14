@@ -516,3 +516,4 @@ with tab_about:
 - Clean head-to-head comparisons without fragile home/away logic
 """
     )
+
