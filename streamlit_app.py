@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 
 st.set_page_config(
     page_title="Rugby Performance Analytics Dashboard",
@@ -8,50 +9,135 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------
+# Base team list (Tier 1 + Tier 2)
+# ---------------------------------------------------------
+BASE_TEAMS = [
+    # Tier 1
+    "New Zealand", "South Africa", "England", "Wales",
+    "Ireland", "France", "Australia",
+    # Tier 2
+    "Argentina", "Fiji", "Samoa", "Tonga", "Japan",
+    "Georgia", "Italy", "USA", "Canada",
+]
+
+# ---------------------------------------------------------
 # Data loading & preparation
 # ---------------------------------------------------------
 @st.cache_data
-def load_match_data(path: str = "data/rugby_matches.csv") -> pd.DataFrame:
+def load_match_data() -> pd.DataFrame:
     """
-    Load rugby match data.
+    Load international rugby match data, prefer a Kaggle-style dataset,
+    and fall back to any local CSV or a tiny demo dataset if needed.
 
-    If the expected CSV is not found, fall back to a small demo dataset so the
-    app always runs. To use your own data, create a CSV with at least:
-    - date or year
-    - team
-    - opponent
-    - team_score
-    - opponent_score
+    Expected Kaggle-style columns:
+    - date, home_team, away_team, home_score, away_score, tournament, ...
+
+    We:
+    - Filter to matches from 1987 onwards
+    - Keep only matches where either team is in BASE_TEAMS
+    - Expand each match into two rows (one per team perspective)
     """
-    try:
-        df = pd.read_csv(path)
-    except Exception:
-        # Fallback demo dataset
+    possible_paths = [
+        "data/rugby_matches.csv",
+        "data/international_rugby_union_results.csv",
+        "data/results.csv",
+    ]
+
+    df_raw = None
+    used_path = None
+
+    for p in possible_paths:
+        try:
+            df_raw = pd.read_csv(p)
+            used_path = p
+            break
+        except Exception:
+            continue
+
+    if df_raw is None:
+        # Fallback demo dataset so the app always runs
         data = [
-            {"date": "2015-10-31", "team": "New Zealand", "opponent": "Australia",
-             "team_score": 34, "opponent_score": 17, "tournament": "Rugby World Cup",
-             "venue": "Twickenham"},
-            {"date": "2019-11-02", "team": "South Africa", "opponent": "England",
-             "team_score": 32, "opponent_score": 12, "tournament": "Rugby World Cup",
-             "venue": "Yokohama"},
-            {"date": "2023-10-28", "team": "South Africa", "opponent": "New Zealand",
-             "team_score": 12, "opponent_score": 11, "tournament": "Rugby World Cup",
-             "venue": "Paris"},
-            {"date": "2022-07-09", "team": "Ireland", "opponent": "New Zealand",
-             "team_score": 23, "opponent_score": 12, "tournament": "Test Series",
-             "venue": "Dunedin"},
-            {"date": "2022-07-16", "team": "Ireland", "opponent": "New Zealand",
-             "team_score": 32, "opponent_score": 22, "tournament": "Test Series",
-             "venue": "Wellington"},
+            {"date": "2015-10-31", "home_team": "New Zealand", "away_team": "Australia",
+             "home_score": 34, "away_score": 17, "tournament": "Rugby World Cup",
+             "city": "London", "country": "England", "neutral": True},
+            {"date": "2019-11-02", "home_team": "South Africa", "away_team": "England",
+             "home_score": 32, "away_score": 12, "tournament": "Rugby World Cup",
+             "city": "Yokohama", "country": "Japan", "neutral": True},
+            {"date": "2023-10-28", "home_team": "South Africa", "away_team": "New Zealand",
+             "home_score": 12, "away_score": 11, "tournament": "Rugby World Cup",
+             "city": "Paris", "country": "France", "neutral": True},
+            {"date": "2022-07-09", "home_team": "New Zealand", "away_team": "Ireland",
+             "home_score": 12, "away_score": 23, "tournament": "Test Series",
+             "city": "Dunedin", "country": "New Zealand", "neutral": False},
+            {"date": "2022-07-16", "home_team": "New Zealand", "away_team": "Ireland",
+             "home_score": 22, "away_score": 32, "tournament": "Test Series",
+             "city": "Wellington", "country": "New Zealand", "neutral": False},
         ]
-        df = pd.DataFrame(data)
+        df_raw = pd.DataFrame(data)
+        used_path = "demo_fallback"
 
-    # Dates and year
-    if "date" in df.columns:
-        df["date"] = pd.to_datetime(df["date"])
-        df["year"] = df["date"].dt.year
-    elif "year" not in df.columns:
-        df["year"] = pd.to_numeric(df.get("year", pd.Series([])), errors="coerce")
+    # If it looks like the Kaggle-style dataset
+    if "home_team" in df_raw.columns and "away_team" in df_raw.columns:
+        # Parse date
+        df_raw["date"] = pd.to_datetime(df_raw["date"], errors="coerce")
+        df_raw = df_raw.dropna(subset=["date"])
+        df_raw["year"] = df_raw["date"].dt.year
+
+        # Filter to 1987+ (modern World Cup era)
+        df_raw = df_raw[df_raw["year"] >= 1987].copy()
+
+        # Filter to Tier 1 + Tier 2
+        mask = df_raw["home_team"].isin(BASE_TEAMS) | df_raw["away_team"].isin(BASE_TEAMS)
+        df_filtered = df_raw[mask].copy()
+
+        # Build team-perspective rows (two per match)
+        home_df = df_filtered.rename(
+            columns={
+                "home_team": "team",
+                "away_team": "opponent",
+                "home_score": "team_score",
+                "away_score": "opponent_score",
+            }
+        )
+        away_df = df_filtered.rename(
+            columns={
+                "away_team": "team",
+                "home_team": "opponent",
+                "away_score": "team_score",
+                "home_score": "opponent_score",
+            }
+        )
+        # Keep date/year/tournament/venue-ish info
+        keep_cols = [
+            "date", "year", "team", "opponent", "team_score", "opponent_score",
+            "tournament", "city", "country", "neutral"
+        ]
+        for col in keep_cols:
+            if col not in home_df.columns:
+                home_df[col] = np.nan
+            if col not in away_df.columns:
+                away_df[col] = np.nan
+
+        df = pd.concat([home_df[keep_cols], away_df[keep_cols]], ignore_index=True)
+
+    else:
+        # Legacy-style dataset: try to adapt to the same schema
+        df = df_raw.copy()
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"], errors="coerce")
+            df = df.dropna(subset=["date"])
+            df["year"] = df["date"].dt.year
+        elif "year" not in df.columns:
+            df["year"] = pd.to_numeric(df.get("year", pd.Series([])), errors="coerce")
+
+        # Ensure required columns exist
+        for col in ["team", "opponent", "team_score", "opponent_score"]:
+            if col not in df.columns:
+                df[col] = np.nan
+
+        # Filter to 1987+ if year exists
+        if "year" in df.columns:
+            df = df[df["year"] >= 1987].copy()
 
     # Result + margin
     if "team_score" in df.columns and "opponent_score" in df.columns:
@@ -59,12 +145,13 @@ def load_match_data(path: str = "data/rugby_matches.csv") -> pd.DataFrame:
         conditions = [
             df["team_score"] > df["opponent_score"],
             df["team_score"] < df["opponent_score"],
-            df["team_score"] == df["opponent_score"]
+            df["team_score"] == df["opponent_score"],
         ]
         choices = ["Win", "Loss", "Draw"]
         df["result"] = np.select(conditions, choices, default="Unknown")
 
-    for col in ["tournament", "venue", "team", "opponent"]:
+    # Stringify some columns if present
+    for col in ["tournament", "city", "country", "team", "opponent"]:
         if col in df.columns:
             df[col] = df[col].astype(str)
 
@@ -76,15 +163,9 @@ df = load_match_data()
 # Teams that actually appear in the data
 teams_in_data = sorted(pd.unique(df[["team", "opponent"]].values.ravel()))
 
-# Base rugby nations list (Option B: show even if there is no data yet)
-BASE_TEAMS = [
-    "Argentina", "Australia", "England", "Fiji", "France", "Georgia", "Ireland",
-    "Italy", "Japan", "New Zealand", "Samoa", "Scotland", "South Africa", "Tonga",
-    "Wales", "USA", "Canada"
-]
-
 # Union of configured teams + those found in the dataset
 teams = sorted(set(BASE_TEAMS) | set(teams_in_data))
+
 
 # ---------------------------------------------------------
 # Helper functions
@@ -161,8 +242,8 @@ wc_df = pd.DataFrame(WORLD_CUPS)
 st.title("Rugby Performance Analytics Dashboard")
 
 st.caption(
-    "Note: This app will show a full list of major rugby nations in the selectors, "
-    "even if your current dataset only contains a subset of them. "
+    "This dashboard uses real international rugby results. The selectors list all Tier 1 + Tier 2 nations, "
+    "even if your current dataset only has matches for some of them. "
     "Teams with no rows in the data will show a 'No data available' message."
 )
 
@@ -215,12 +296,12 @@ with tab_team:
             )
             yearly["win_pct"] = yearly["wins"] / yearly["matches"] * 100
 
-            st.markdown("**Win % by Year** (x-axis: Year, y-axis: Win Percentage)")
+            st.markdown("**Win % by Year**")
             st.line_chart(yearly, x="year", y="win_pct")
 
             # Margin by match
             if "margin" in team_df.columns:
-                st.markdown("**Score Margin by Match** (x-axis: Match Date/Year, y-axis: Score Margin)")
+                st.markdown("**Score Margin by Match**")
                 margin_df = team_df.sort_values("date" if "date" in team_df.columns else "year")
                 x_col = "date" if "date" in margin_df.columns else "year"
                 st.bar_chart(margin_df, x=x_col, y="margin")
@@ -236,7 +317,6 @@ with tab_rankings:
     if rankings_df.empty:
         st.info("Rankings require results and margin data.")
     else:
-        # Display table with capitalized headers & left alignment
         rankings_display = rankings_df.rename(
             columns={
                 "rank": "Rank",
@@ -267,11 +347,20 @@ with tab_rankings:
             hide_index=True
         )
 
-        # Top N bar chart
+        # Static Top N bar chart using matplotlib (no zoom/scroll)
         top_n = min(10, len(rankings_display))
-        st.markdown(f"**Top {top_n} Teams by Win %** (x-axis: Team, y-axis: Win Percentage)")
         top_df = rankings_display.head(top_n)
-        st.bar_chart(top_df, x="Team", y="Win %")
+
+        st.subheader(f"Top {top_n} Teams by Win %")
+
+        fig, ax = plt.subplots()
+        ax.bar(top_df["Team"], top_df["Win %"])
+        ax.set_xlabel("Team")
+        ax.set_ylabel("Win %")
+        ax.set_title(f"Top {top_n} Teams by Win %")
+        ax.tick_params(axis="x", rotation=45, labelsize=8)
+        fig.tight_layout()
+        st.pyplot(fig, use_container_width=True)
 
 # ---------------------------------------------------------
 # TAB: Trends
@@ -293,7 +382,6 @@ with tab_trends:
         with col1:
             st.subheader("Average Margin by Year")
             by_year = trend_df.groupby("year", as_index=False).agg(avg_margin=("margin", "mean"))
-            st.markdown("x-axis: Year, y-axis: Average Score Margin")
             st.line_chart(by_year, x="year", y="avg_margin")
 
         with col2:
@@ -304,7 +392,6 @@ with tab_trends:
             )
             vs_opp["win_pct"] = vs_opp["wins"] / vs_opp["matches"] * 100
             vs_opp = vs_opp.sort_values("matches", ascending=False).head(12)
-            st.markdown("x-axis: Opponent, y-axis: Win Percentage")
             st.bar_chart(vs_opp, x="opponent", y="win_pct")
 
 # ---------------------------------------------------------
@@ -326,7 +413,6 @@ with tab_compare:
 
         st.subheader("Head-to-Head Metrics")
 
-        # Make sure both teams have at least some data in the dataset
         a_has_data = not df[df["team"] == team_a].empty
         b_has_data = not df[df["team"] == team_b].empty
 
@@ -338,7 +424,6 @@ with tab_compare:
         elif h2h_df.empty:
             st.info("These teams have no recorded head-to-head matches in the dataset.")
         else:
-            # Normalize so that A is always the team perspective
             a_as_team = h2h_df[h2h_df["team"] == team_a]
             a_as_opp = h2h_df[h2h_df["opponent"] == team_a]
 
@@ -425,7 +510,6 @@ with tab_compare:
             st.subheader("Score Margin by Match (Team A Perspective)")
             a_norm_sorted = a_norm.sort_values("date" if "date" in a_norm.columns else "year")
             x_col = "date" if "date" in a_norm_sorted.columns else "year"
-            st.markdown("x-axis: Match Date/Year, y-axis: Score Margin (Team A − Team B)")
             st.bar_chart(a_norm_sorted, x=x_col, y="margin")
 
 # ---------------------------------------------------------
@@ -434,7 +518,6 @@ with tab_compare:
 with tab_wc:
     st.header("Rugby World Cup History")
 
-    # Display table with cleaned formatting
     wc_display = wc_df.copy()
     wc_display["Year"] = wc_display["year"].astype(str)
     wc_display = wc_display.rename(
@@ -458,7 +541,7 @@ with tab_wc:
     )
 
     st.subheader("World Cup Titles by Nation")
-    # All nations (winners + runner-ups), even if they have zero titles
+
     nations = sorted(set(wc_df["winner"]) | set(wc_df["runner_up"]))
     title_counts = []
     for nation in nations:
@@ -469,8 +552,14 @@ with tab_wc:
         by=["Titles", "Nations"], ascending=[False, True]
     )
 
-    st.markdown("x-axis: **Nations**, y-axis: **Titles**")
-    st.bar_chart(titles_df, x="Nations", y="Titles")
+    fig, ax = plt.subplots()
+    ax.bar(titles_df["Nations"], titles_df["Titles"])
+    ax.set_xlabel("Nation")
+    ax.set_ylabel("Titles")
+    ax.set_title("Rugby World Cup Titles by Nation")
+    ax.tick_params(axis="x", rotation=45, labelsize=8)
+    fig.tight_layout()
+    st.pyplot(fig, use_container_width=True)
 
 # ---------------------------------------------------------
 # TAB: About
@@ -479,20 +568,18 @@ with tab_about:
     st.header("About This Dashboard")
     st.markdown(
         """
-        This dashboard is a **Rugby Performance Analytics** playground.
+        This dashboard is a **Rugby Performance Analytics** playground powered by real
+        international match data.
 
         **Tabs overview**
 
-        - **Team View** – Dive into one team at a time, with Win %, score margins,
-          and match-level performance.
-        - **Rankings** – Simple global ranking table built from Wins, Losses, and
-          Average Margin.
+        - **Team View** – One team at a time: Win %, score margins, and match-level performance.
+        - **Rankings** – Simple global ranking table built from Wins, Losses, and Average Margin.
         - **Trends** – How performance evolves over time and against key opponents.
         - **Compare** – Side-by-side head-to-head comparison between any two teams.
         - **World Cups** – Quick reference of Rugby World Cup winners since 1987.
 
-        To plug in your own data, point `load_match_data()` to your CSV and make sure
-        it includes at least: `team`, `opponent`, `team_score`, `opponent_score`,
-        and `date` or `year`.
+        To plug in your own data, drop a CSV into the `data/` folder with at least:
+        `date`, `home_team`, `away_team`, `home_score`, `away_score`, and `tournament`.
         """
     )
