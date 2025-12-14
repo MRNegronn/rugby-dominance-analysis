@@ -43,6 +43,10 @@ df = pd.read_csv(RAW_INPUT_FILE)
 # Normalize column names (defensive)
 df.columns = [c.strip().lower() for c in df.columns]
 
+# Handle dataset naming differences
+if "competition" in df.columns and "tournament" not in df.columns:
+    df = df.rename(columns={"competition": "tournament"})
+
 required_cols = {
     "date",
     "home_team",
@@ -51,6 +55,7 @@ required_cols = {
     "away_score",
     "tournament",
 }
+
 
 missing = required_cols - set(df.columns)
 if missing:
