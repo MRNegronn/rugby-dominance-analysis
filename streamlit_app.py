@@ -266,6 +266,8 @@ df_filtered = df[
 if selected_tournaments:
     df_filtered = df_filtered[df_filtered["tournament"].isin(selected_tournaments)].copy()
 
+df_dom = add_dominance_scores(df_filtered)
+
 
 # Build team list from filtered data (still allow Tier list ordering)
 teams_in_data = sorted(set(df_filtered["team"].unique().tolist()) | set(df_filtered["opponent"].unique().tolist()))
@@ -556,5 +558,6 @@ with tab_about:
 - Clean head-to-head comparisons without fragile home/away logic
 """
     )
+
 
 
