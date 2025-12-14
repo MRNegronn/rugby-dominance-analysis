@@ -348,6 +348,55 @@ with tab_team:
 # ---------------------------------------------------------
 with tab_rankings:
     st.header("Rankings")
+    # -------------------------------------------------
+    # Dominance Index Leaderboard (PRIMARY)
+    # -------------------------------------------------
+    st.subheader("Dominance Index Leaderboard")
+
+    dom_leader = (
+        df_dom.groupby("team", as_index=False)
+        .agg(
+            dominance_index=("dominance_score", "mean"),
+            matches=("dominance_score", "count"),
+        )
+        .sort_values("dominance_index", ascending=False)
+        .reset_index(drop=True)
+    )
+
+    dom_leader["rank"] = dom_leader.index + 1
+    dom_leader["dominance_index"] = dom_leader["dominance_index"].round(3)
+
+    # Show Top 10 as a static visual
+    top10_dom = dom_leader.head(10)
+
+    static_bar_chart(
+        categories=top10_dom["team"].tolist(),
+        values=top10_dom["dominance_index"].tolist(),
+        title="Top 10 Teams by Dominance Index",
+        xlabel="Team",
+        ylabel="Dominance Index",
+        rotate_x=45,
+    )
+
+    # Compact, non-editable table for context
+    st.table(
+        top10_dom[["rank", "team", "dominance_index", "matches"]]
+        .rename(
+            columns={
+                "rank": "Rank",
+                "team": "Team",
+                "dominance_index": "Dominance Index",
+                "matches": "Matches",
+            }
+        )
+    )
+
+    st.caption(
+        "Dominance Index combines results, score margin, and opponent strength. "
+        "Calculated within the selected filters."
+    )
+
+    st.divider()
 
     rankings = compute_rankings(df_filtered)
 
@@ -558,6 +607,7 @@ with tab_about:
 - Clean head-to-head comparisons without fragile home/away logic
 """
     )
+
 
 
 
