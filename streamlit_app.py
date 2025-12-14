@@ -192,6 +192,46 @@ def static_margin_bar_by_date(df_rows: pd.DataFrame, title: str):
     fig.tight_layout()
     st.pyplot(fig, use_container_width=True)
 
+def compute_opponent_strength(df_scope: pd.DataFrame) -> pd.DataFrame:
+    """
+    Compute opponent win % within the CURRENT filtered scope.
+    Returns a DataFrame: opponent, opp_win_pct
+    """
+    opp = (
+        df_scope.groupby("team", as_index=False)
+        .agg(
+            matches=("result", "count"),
+            wins=("result", lambda x: int((x == "Win").sum())),
+        )
+    )
+    opp["opp_win_pct"] = np.where(
+        opp["matches"] > 0, opp["wins"] / opp["matches"] * 100, 0.0
+    )
+    return opp[["team", "opp_win_pct"]].rename(columns={"team": "opponent"})
+
+
+def add_dominance_scores(df_scope: pd.DataFrame) -> pd.DataFrame:
+    """
+    Adds per-match dominance_score to df_scope using contextual opponent strength.
+    """
+    # Result weights
+    result_weight = df_scope["result"].map({"Win": 1.0, "Draw": 0.5, "Loss": 0.0}).fillna(0.0)
+
+    # Margin factor (log-scaled, wins only)
+    margin_pos = df_scope["margin"].clip(lower=0)
+    margin_factor = np.log1p(margin_pos)
+
+    # Opponent strength (contextual)
+    opp_strength = compute_opponent_strength(df_scope)
+    df_aug = df_scope.merge(opp_strength, on="opponent", how="left")
+    df_aug["opp_win_pct"] = df_aug["opp_win_pct"].fillna(0.0)
+
+    # Normalize opponent factor (0.5 → 1.0)
+    opp_factor = 0.5 + (df_aug["opp_win_pct"] / 200.0)
+
+    # Final dominance per match
+    df_aug["dominance_score"] = result_weight * margin_factor * opp_factor
+    return df_aug
 
 # =========================================================
 # Sidebar controls (global)
@@ -516,4 +556,5 @@ with tab_about:
 - Clean head-to-head comparisons without fragile home/away logic
 """
     )
+
 
