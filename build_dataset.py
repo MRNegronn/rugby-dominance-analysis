@@ -160,3 +160,9 @@ team_df.to_csv(OUTPUT_FILE, index=False)
 print("Done.")
 print(f"Final rows: {len(team_df):,}")
 print(f"Teams represented: {team_df['team'].nunique()}")
+
+from helpers.elo import compute_elo
+
+df_matches = compute_elo(df_matches)
+
+df_matches.to_csv("data/matches_with_elo.csv", index=False)
