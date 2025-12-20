@@ -139,6 +139,4 @@ print(f"Teams represented: {team_df['team'].nunique()}")
 
 from helpers.elo import compute_elo
 
-df_matches = compute_elo(df_matches)
-
 df_matches.to_csv("data/rugby_matches.csv", index=False)
