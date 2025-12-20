@@ -60,7 +60,7 @@ required = {
 
 
 
-missing = required_cols - set(df.columns)
+missing = required - set(df.columns)
 if missing:
     raise ValueError(f"Missing required columns: {missing}")
 
