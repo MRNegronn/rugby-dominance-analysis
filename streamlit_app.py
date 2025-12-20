@@ -76,6 +76,7 @@ with st.sidebar:
             df_filtered["tournament"].astype(str).isin(selected_tournaments)
         ]
 
+    teams = sorted(df["team"].dropna().unique())
 
 # =========================================================
 # Tabs
@@ -143,4 +144,5 @@ This version is explanatory only — not predictive.
     st.table(
         recent[["date","opponent","result","elo_delta","elo_post"]]
     )
+
 
