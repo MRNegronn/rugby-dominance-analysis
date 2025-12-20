@@ -165,4 +165,4 @@ from helpers.elo import compute_elo
 
 df_matches = compute_elo(df_matches)
 
-df_matches.to_csv("data/matches_with_elo.csv", index=False)
+df_matches.to_csv("data/rugby_matches.csv", index=False)
