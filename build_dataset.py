@@ -37,6 +37,7 @@ TIER_1_2_TEAMS = [
 # -------------------------------------------------
 
 print("Loading raw dataset...")
+df = pd.read_csv("data/rugby_matches.csv")
 
 # Normalize column names (defensive)
 df.columns = [c.strip().lower() for c in df.columns]
