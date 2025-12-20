@@ -54,22 +54,28 @@ with st.sidebar:
     )
 
     tournaments = sorted(
-    df["tournament"]
-    .dropna()
-    .astype(str)
-    .unique()
-)
+        df["tournament"]
+        .dropna()
+        .astype(str)
+        .unique()
+    )
 
+    selected_tournaments = st.multiselect(
+        "Tournaments",
+        tournaments,
+        default=[]
+    )
+    
+    df_filtered = df[
+        (df["year"] >= year_range[0]) &
+        (df["year"] <= year_range[1])
+    ].copy()
 
-df_filtered = df[
-    (df["year"] >= year_range[0]) &
-    (df["year"] <= year_range[1])
-]
+    if selected_tournaments:
+        df_filtered = df_filtered[
+            df_filtered["tournament"].astype(str).isin(selected_tournaments)
+        ]
 
-if selected_tournaments:
-    df_filtered = df_filtered[df_filtered["tournament"].isin(selected_tournaments)]
-
-teams = sorted(df["team"].unique())
 
 # =========================================================
 # Tabs
