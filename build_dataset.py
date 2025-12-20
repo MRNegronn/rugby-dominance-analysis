@@ -104,7 +104,7 @@ team_df["result"] = np.select(
 )
 
 team_df["result"] = np.select(
-
+)
 # -------------------------------------------------
 # Final column selection (HARD DELETE others)
 # -------------------------------------------------
