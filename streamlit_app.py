@@ -53,10 +53,13 @@ with st.sidebar:
         (int(df["year"].min()), int(df["year"].max())),
     )
 
-    tournaments = sorted(df["tournament"].unique())
-    selected_tournaments = st.multiselect(
-        "Tournaments", tournaments, default=[]
-    )
+    tournaments = sorted(
+    df["tournament"]
+    .dropna()
+    .astype(str)
+    .unique()
+)
+
 
 df_filtered = df[
     (df["year"] >= year_range[0]) &
@@ -134,3 +137,4 @@ This version is explanatory only — not predictive.
     st.table(
         recent[["date","opponent","result","elo_delta","elo_post"]]
     )
+
