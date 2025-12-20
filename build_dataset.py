@@ -6,7 +6,6 @@ from pathlib import Path
 # Configuration
 # -------------------------------------------------
 
-RAW_INPUT_FILE = "results.csv"
 OUTPUT_DIR = Path("data")
 OUTPUT_FILE = OUTPUT_DIR / "rugby_matches.csv"
 
@@ -38,7 +37,6 @@ TIER_1_2_TEAMS = [
 # -------------------------------------------------
 
 print("Loading raw dataset...")
-df = pd.read_csv(RAW_INPUT_FILE)
 
 # Normalize column names (defensive)
 df.columns = [c.strip().lower() for c in df.columns]
