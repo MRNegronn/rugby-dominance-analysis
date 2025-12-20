@@ -104,6 +104,17 @@ team_df["result"] = np.select(
 )
 
 # -------------------------------------------------
+# Dominance Index v1
+# -------------------------------------------------
+
+# Basic dominance formula (existing logic, now persisted)
+team_df["dominance_score"] = (
+    team_df["margin"]
+    * np.where(team_df["result"] == "Win", 1.0,
+      np.where(team_df["result"] == "Loss", -1.0, 0.0))
+)
+
+# -------------------------------------------------
 # Final column selection (HARD DELETE others)
 # -------------------------------------------------
 
@@ -116,6 +127,7 @@ FINAL_COLUMNS = [
     "opponent_score",
     "margin",
     "result",
+    "dominance_score",
     "tournament",
 ]
 
