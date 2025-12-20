@@ -103,6 +103,8 @@ team_df["result"] = np.select(
     default="Unknown",
 )
 
+team_df["result"] = np.select(
+
 # -------------------------------------------------
 # Final column selection (HARD DELETE others)
 # -------------------------------------------------
