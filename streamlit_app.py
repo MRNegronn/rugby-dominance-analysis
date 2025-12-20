@@ -81,9 +81,10 @@ with st.sidebar:
 # =========================================================
 # Tabs
 # =========================================================
-tab_team, tab_rankings, tab_elo = st.tabs(
-    ["Team View", "Rankings", "Elo"]
+tab_team, tab_rankings, tab_elo, tab_trends, tab_compare, tab_wc, tab_about = st.tabs(
+    ["Team View", "Rankings", "Elo", "Trends", "Compare", "World Cups", "About"]
 )
+
 
 # =========================================================
 # Elo Tab
@@ -144,5 +145,6 @@ This version is explanatory only — not predictive.
     st.table(
         recent[["date","opponent","result","elo_delta","elo_post"]]
     )
+
 
 
