@@ -46,14 +46,18 @@ df.columns = [c.strip().lower() for c in df.columns]
 if "competition" in df.columns and "tournament" not in df.columns:
     df = df.rename(columns={"competition": "tournament"})
 
-required_cols = {
+required = {
     "date",
-    "home_team",
-    "away_team",
-    "home_score",
-    "away_score",
+    "year",
+    "team",
+    "opponent",
+    "team_score",
+    "opponent_score",
+    "result",
+    "margin",
     "tournament",
 }
+
 
 
 missing = required_cols - set(df.columns)
