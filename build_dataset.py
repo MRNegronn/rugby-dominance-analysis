@@ -81,36 +81,9 @@ df = df[df["year"] >= MIN_YEAR]
 # -------------------------------------------------
 
 print("Filtering to Tier 1 + Tier 2 nations...")
-df = df[
-    df["home_team"].isin(TIER_1_2_TEAMS)
-    | df["away_team"].isin(TIER_1_2_TEAMS)
-]
+df = df[df["team"].isin(TIER_1_2_TEAMS)].copy()
 
-# -------------------------------------------------
-# Expand each match into two team-perspective rows
-# -------------------------------------------------
-
-print("Expanding matches into team-centric rows...")
-
-home_view = df.rename(
-    columns={
-        "home_team": "team",
-        "away_team": "opponent",
-        "home_score": "team_score",
-        "away_score": "opponent_score",
-    }
-)
-
-away_view = df.rename(
-    columns={
-        "away_team": "team",
-        "home_team": "opponent",
-        "away_score": "team_score",
-        "home_score": "opponent_score",
-    }
-)
-
-team_df = pd.concat([home_view, away_view], ignore_index=True)
+team_df = df.copy()
 
 # -------------------------------------------------
 # Derived analytics fields
