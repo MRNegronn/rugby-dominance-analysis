@@ -209,18 +209,21 @@ with tab_trends:
 with tab_compare:
     st.header("Team Comparison")
 
-    team_a, team_b = st.multiselect(
-        "Select two teams",
+    selected = st.multiselect(
+        "Select exactly two teams",
         teams,
         default=teams[:2],
         max_selections=2,
     )
 
-    if len(team_a := [team_a, team_b]) == 2:
+    if len(selected) == 2:
         comp = dominance_by_team[
-            dominance_by_team["team"].isin([team_a[0], team_a[1]])
+            dominance_by_team["team"].isin(selected)
         ]
         st.dataframe(comp, use_container_width=True, hide_index=True)
+    else:
+        st.info("Select two teams to compare.")
+
 
 # =========================================================
 # World Cups
@@ -255,3 +258,4 @@ with tab_about:
 Built for clarity, not prediction.
 """
     )
+
